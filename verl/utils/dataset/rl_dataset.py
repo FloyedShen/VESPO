@@ -291,6 +291,13 @@ class RLHFDataset(Dataset):
         """
         Note that we also return the raw_input_ids so that it can be combined with other chat template
         """
+
+        from PIL import PngImagePlugin
+
+        # Increase PIL limits to handle large ICC profiles in PNG images
+        PngImagePlugin.MAX_TEXT_CHUNK = 10 * (1024 ** 2)  # 10MB
+        PngImagePlugin.MAX_TEXT_MEMORY = 10 * (1024 ** 2)  # 10MB
+
         row_dict: dict = self.dataframe[item]
         messages = self._build_messages(row_dict)
         model_inputs = {}

@@ -115,16 +115,16 @@ def is_checkpoint_converted(output_path: Path) -> bool:
     Returns:
         True if already converted, False otherwise
     """
+    print(output_path)
     if not output_path.exists():
         return False
 
     # Check for key HuggingFace model files
     config_json = output_path / "config.json"
-    model_safetensors = output_path / "model.safetensors"
-    model_bin = list(output_path.glob("pytorch_model*.bin"))
+    model_safetensors = list(output_path.glob("model*.safetensors"))
 
     # Consider it converted if config.json exists and at least one model file
-    return config_json.exists() and (model_safetensors.exists() or len(model_bin) > 0)
+    return config_json.exists() and len(model_safetensors) > 0
 
 
 def convert_checkpoint(

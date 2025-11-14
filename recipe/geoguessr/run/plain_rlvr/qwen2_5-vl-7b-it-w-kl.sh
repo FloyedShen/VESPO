@@ -11,8 +11,8 @@ ALGO="plain_rlvr_grpo"
 OBJECT="geoguessr_reward_official"
 DATASET="mix_3x5"
 
-MODEL_FULL="Qwen/Qwen3-VL-8B-Instruct"
-MODEL="qwen3_vl_8b-it-custom_rm-w_kl"
+MODEL_FULL="Qwen/Qwen2.5-VL-7B-Instruct"
+MODEL="qwen2_5_vl_7b-it-custom_rm-w_kl"
 
 PROJECT_NAME="verl_grpo_geoguessr"
 EXP_NAME="${ALGO}_${OBJECT}_${DATASET}_${MODEL}_${ENGINE}"
@@ -70,7 +70,6 @@ python3 -m verl.trainer.main_ppo \
     algorithm.use_kl_in_reward=False \
     reward_model.launch_reward_fn_async=True \
     reward_model.reward_manager=geoguessr \
-    trainer.val_before_train=True \
     trainer.critic_warmup=0 \
     trainer.logger='["console","tensorboard", "swanlab"]' \
     trainer.project_name=$PROJECT_NAME \

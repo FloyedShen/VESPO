@@ -542,8 +542,8 @@ def geoguessr_reward_official(data_source: str, solution_str: str,
 
 if __name__ == "__main__":
     # Example 1: Official scoring with dict return
-    solution1 = "Based on the architecture, this appears to be in Paris. \\boxed{48.8566, 2.3522}"
-    ground_truth1 = "48.8584, 2.2945"  # Eiffel Tower
+    solution1 = "Based on the architecture and vegetation, this is New York City. \\boxed{40.7128, -74.0060}"
+    ground_truth1 = "40.7128, -74.02"  # Eiffel Tower
 
     result1 = geoguessr_reward_official("test", solution1, ground_truth1, {"verbose": True})
     print("\nExample 1 - Official scoring:")

@@ -22,7 +22,8 @@ def build_system_prompt() -> str:
     """
     Build standard Qwen3-VL-8B-Thinking system prompt
     """
-    return "You are a helpful assistant."
+    # return "You are a helpful assistant."
+    return "You are a helpful assistant. You FIRST think about the reasoning process as an internal monologue and then provide the final answer. The reasoning process MUST BE enclosed within <think> </think> tags. The final answer MUST BE put in \\boxed{}."
 
 
 def build_user_prompt(sample: Dict[str, Any], include_address_hints: bool = False) -> str:
@@ -616,7 +617,7 @@ def convert_all_datasets(
         datasets: List of datasets to process (e.g., ['gaea', 'osv5m']). If None, process all.
     """
     processed_dir = os.path.join(geogusor_dir, "processed")
-    output_dir = os.path.join(output_dir, "verl_data", "plain_rlvr")
+    output_dir = os.path.join(output_dir, "verl_data", "plain_rlvr_tk")
 
     # Define all available datasets with their metadata
     # Format: (relative_path, output_name, split, use_load_dataset)
@@ -802,7 +803,7 @@ if __name__ == "__main__":
         # Convert single dataset
         input_path = os.path.join(geogusor_dir, "processed", args.single_dataset)
         dataset_name = args.single_dataset.replace("/", "_")
-        output_path = os.path.join(output_dir, "verl_data", "plain_rlvr", f"{dataset_name}.parquet")
+        output_path = os.path.join(output_dir, "verl_data", "plain_rlvr_tk", f"{dataset_name}.parquet")
         split = "train" if "train" in args.single_dataset else "test"
 
         convert_dataset(

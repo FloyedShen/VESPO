@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
+import os
 import time
 from pprint import pformat
 
 import ray
+import torch
 from ray import ObjectRef
 
 from recipe.fully_async_policy.detach_utils import (
@@ -28,7 +30,9 @@ from recipe.fully_async_policy.message_queue import MessageQueueClient
 from recipe.fully_async_policy.ray_trainer import FullyAsyncRayPPOTrainer
 from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup
 from verl.trainer.ppo.ray_trainer import ResourcePoolManager
+from verl.trainer.ppo.reward import load_reward_manager
 from verl.trainer.ppo.utils import Role, WorkerType
+from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.utils.profiler import marked_timer
 from verl.utils.tracking import ValidationGenerationsLogger
 
@@ -57,9 +61,12 @@ class FullyAsyncRollouter(FullyAsyncRayPPOTrainer):
         self.tokenizer = tokenizer
         self.processor = processor
         self.config = config
-        self.reward_fn = reward_fn
-        self.val_reward_fn = val_reward_fn
-
+        self.reward_fn = load_reward_manager(
+            config, tokenizer, num_examine=0, **config.reward_model.get("reward_kwargs", {})
+        )
+        self.val_reward_fn = load_reward_manager(
+            config, tokenizer, num_examine=1, **config.reward_model.get("reward_kwargs", {})
+        )
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
 
         assert not self.hybrid_engine
@@ -130,7 +137,8 @@ class FullyAsyncRollouter(FullyAsyncRayPPOTrainer):
         self.staleness_samples = 0
         self.dropped_stale_samples = 0
         self.processed_sample_count = 0
-        self.global_steps = 0
+        # we start from step 1
+        self.global_steps = 1
         self.idle_start_time = None
         self.version_start_time = None
 
@@ -143,6 +151,8 @@ class FullyAsyncRollouter(FullyAsyncRayPPOTrainer):
         # Initialize async locks directly
         self.lock = asyncio.Lock()
         self.condition = asyncio.Condition(self.lock)
+        # Add dataloader lock
+        self.dataloader_lock = asyncio.Lock()
 
         # Initialize async queues
         self.pending_queue = asyncio.Queue(maxsize=128)
@@ -234,6 +244,80 @@ class FullyAsyncRollouter(FullyAsyncRayPPOTrainer):
 
             self.version_start_time = time.time()
 
+    async def save_checkpoint(self, local_global_step_folder: str):
+        # WARNING!: Due to the asynchronous nature, there are some in-flight samples
+        # (pending/cancel/result queue and message queue).
+        # Therefore, directly saving the state of the dataloader will result in losing these
+        # samples when resuming training.
+        # TODO: Implement dataloader recovery without losing in-flight samples.
+        from verl.utils.fs import local_mkdir_safe
+
+        # save dataloader
+        local_mkdir_safe(local_global_step_folder)
+        dataloader_local_path = os.path.join(local_global_step_folder, "data.pt")
+        async with self.dataloader_lock:
+            dataloader_state_dict = self.train_dataloader.state_dict()
+        torch.save(dataloader_state_dict, dataloader_local_path)
+        print(f"[FullyAsyncRollouter] Saved dataloader checkpoint to {dataloader_local_path}")
+
+    def load_checkpoint(self):
+        """Load checkpoint including dataloader state based on resume mode"""
+
+        if self.config.trainer.resume_mode == "disable":
+            print("[FullyAsyncRollouter] Resume mode is disabled, starting from scratch")
+            return 0
+
+        # Determine checkpoint folder path
+        if self.config.trainer.default_hdfs_dir is not None:
+            raise NotImplementedError("[FullyAsyncRollouter] Load from hdfs is not implemented yet")
+        else:
+            checkpoint_folder = self.config.trainer.default_local_dir
+            if not os.path.isabs(checkpoint_folder):
+                working_dir = os.getcwd()
+                checkpoint_folder = os.path.join(working_dir, checkpoint_folder)
+
+            global_step_folder = find_latest_ckpt_path(checkpoint_folder)
+
+        # Find and validate global_step_folder based on resume mode
+        if self.config.trainer.resume_mode == "auto":
+            if global_step_folder is None:
+                print("[FullyAsyncRollouter] Training from scratch (no checkpoint found)")
+                return 0
+        elif self.config.trainer.resume_mode == "resume_path":
+            assert isinstance(self.config.trainer.resume_from_path, str), (
+                "[FullyAsyncRollouter] resume_from_path must be str type"
+            )
+            assert "global_step_" in self.config.trainer.resume_from_path, (
+                "[FullyAsyncRollouter] resume_from_path must specify the global_steps"
+            )
+            global_step_folder = self.config.trainer.resume_from_path
+            if not os.path.isabs(global_step_folder):
+                working_dir = os.getcwd()
+                global_step_folder = os.path.join(working_dir, global_step_folder)
+        else:
+            raise ValueError(f"[FullyAsyncRollouter] Unknown resume_mode: {self.config.trainer.resume_mode}")
+
+        print(f"[FullyAsyncRollouter] Loading checkpoint from: {global_step_folder}")
+
+        # Extract and set global step
+        trainer_global_steps = int(global_step_folder.split("global_step_")[-1])
+        self.global_steps = (
+            trainer_global_steps * self.required_samples * self.config.async_training.trigger_parameter_sync_step + 1
+        )
+        print(f"[FullyAsyncRollouter] Setting global_steps to {self.global_steps}")
+
+        # Load dataloader state
+        dataloader_local_path = os.path.join(global_step_folder, "data.pt")
+        if os.path.exists(dataloader_local_path):
+            dataloader_state_dict = torch.load(dataloader_local_path, weights_only=False)
+            self.train_dataloader.load_state_dict(dataloader_state_dict)
+            print(f"[FullyAsyncRollouter] Loaded dataloader state from {dataloader_local_path}")
+        else:
+            print(
+                f"[FullyAsyncRollouter] Warning: No dataloader state found at {dataloader_local_path}, "
+                f"will start from scratch"
+            )
+
     def _validate_config(self):
         # Validate asynchronous training configuration
         if not hasattr(self.config, "async_training"):
@@ -295,9 +379,7 @@ class FullyAsyncRollouter(FullyAsyncRayPPOTrainer):
 
         for epoch, batch_dict in continuous_iterator:
             # Similar to _prepare_generate_batch: Separate data
-            full_batch = prepare_single_generation_data(
-                batch_dict, self.global_steps, self.config.actor_rollout_ref.rollout.n
-            )
+            full_batch = prepare_single_generation_data(batch_dict, self.config)
 
             sample_id = f"sample_{epoch}_{self.global_steps}"
 
@@ -310,6 +392,7 @@ class FullyAsyncRollouter(FullyAsyncRayPPOTrainer):
                 param_version_start=[],
                 param_version_end=[],
                 processing_times=[],
+                tool_calls=[],
                 rollout_status={},
             )
 
@@ -412,15 +495,13 @@ class FullyAsyncRollouter(FullyAsyncRayPPOTrainer):
         rollout_sample.full_batch.non_tensor_batch["param_version"] = [self.current_param_version] * len(
             rollout_sample.full_batch
         )
-        agent_loop_output_list = await self.async_rollout_manager.generate_single_sample_async(
+        rollout_sample.agent_loop_output_list = await self.async_rollout_manager.generate_single_sample_async(
             rollout_sample.full_batch, rollout_sample.agent_loop_output_list
         )
-        rollout_sample.agent_loop_output_list = agent_loop_output_list
 
-        is_cancel = False
-        for agent_loop in agent_loop_output_list:
-            if not is_cancel and agent_loop.is_cancel:
-                is_cancel = True
+        is_cancel = any(
+            agent_loop.extra_fields.get("is_cancel", False) for agent_loop in rollout_sample.agent_loop_output_list
+        )
 
         if is_cancel:
             # Put in the cancel queue and wait for the generation to resume
@@ -456,9 +537,6 @@ class FullyAsyncRollouter(FullyAsyncRayPPOTrainer):
 
     async def _streaming_generation_main(self):
         """The main entry method for stream processing"""
-
-        # we start from step 1
-        self.global_steps += 1
 
         if self.async_rollout_manager is None:
             await self._init_async_rollout_manager()
@@ -613,12 +691,11 @@ class FullyAsyncRollouter(FullyAsyncRayPPOTrainer):
             ray.get(dependency_ref)
         print("[FullyAsyncRollouter][Public][Resume]")
         async with self.lock:
+            if self.config.async_training.partial_rollout:
+                await self.async_rollout_manager.resume()
             self.paused = False
             self.monitor_loop_trigger = True
             self.condition.notify_all()
-
-            if self.config.async_training.partial_rollout:
-                await self.async_rollout_manager.resume()
 
     async def get_statistics(self) -> dict:
         queue_stats = self.message_queue_client.get_statistics_sync()

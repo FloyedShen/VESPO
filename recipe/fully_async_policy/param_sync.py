@@ -18,6 +18,8 @@ import time
 import ray
 from ray.util.collective import collective
 
+from verl.utils.device import get_nccl_backend
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,7 +71,7 @@ class ParameterSynchronizer:
             actor_rollout_workers,
             len(actor_rollout_workers),
             list(range(0, len(actor_rollout_workers))),
-            backend="nccl",
+            backend=get_nccl_backend(),
             group_name=self.sync_group_name,
         )
 
@@ -82,6 +84,7 @@ class ParameterSynchronizer:
 
         ray.get(self.rollouter.pause.remote())
 
+        print(f"[ParameterSynchronizer] rollout paused. cost {time.time() - start_time:.2f} seconds")
         # Update MQ version
         self.mq_client.update_param_version_sync(version)
 
@@ -103,3 +106,8 @@ class ParameterSynchronizer:
         if self.wait_last_resume:
             ray.get(self.wait_last_resume)
         print(f"[ParameterSynchronizer] Wait last validate cost: {time.time() - start_time:.2f} seconds")
+
+    def rollouter_save_checkpoint(self, local_global_step_folder: str):
+        """Trigger rollout to save checkpoint(dataloader)"""
+        print(f"[ParameterSynchronizer] Triggering checkpoint save at {local_global_step_folder} ...")
+        return ray.get(self.rollouter.save_checkpoint.remote(local_global_step_folder))

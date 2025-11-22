@@ -921,16 +921,16 @@ class RayPPOTrainer:
         attention_mask = batch.batch["attention_mask"]
         batch_size = attention_mask.shape[0]
         global_seqlen_lst = batch.batch["attention_mask"].view(batch_size, -1).sum(-1)  # (train_batch_size,)
-        global_seqlen_lst = calculate_workload(global_seqlen_lst)
+        workload_lst = calculate_workload(global_seqlen_lst)
         world_size = self.actor_rollout_wg.world_size
         if keep_minibatch:
             # Decouple the DP balancing and mini-batching.
             minibatch_size = self.config.actor_rollout_ref.actor.get("ppo_mini_batch_size")
-            minibatch_num = len(global_seqlen_lst) // minibatch_size
+            minibatch_num = len(workload_lst) // minibatch_size
             global_partition_lst = [[] for _ in range(world_size)]
             for i in range(minibatch_num):
                 rearrange_minibatch_lst = get_seqlen_balanced_partitions(
-                    global_seqlen_lst[i * minibatch_size : (i + 1) * minibatch_size],
+                    workload_lst[i * minibatch_size : (i + 1) * minibatch_size],
                     k_partitions=world_size,
                     equal_size=True,
                 )
@@ -938,11 +938,11 @@ class RayPPOTrainer:
                     global_partition_lst[j].extend([x + minibatch_size * i for x in part])
         else:
             global_partition_lst = get_seqlen_balanced_partitions(
-                global_seqlen_lst, k_partitions=world_size, equal_size=True
+                workload_lst, k_partitions=world_size, equal_size=True
             )
         # Place smaller micro-batches at both ends to reduce the bubbles in pipeline parallel.
         for idx, partition in enumerate(global_partition_lst):
-            partition.sort(key=lambda x: (global_seqlen_lst[x], x))
+            partition.sort(key=lambda x: (workload_lst[x], x))
             ordered_partition = partition[::2] + partition[1::2][::-1]
             global_partition_lst[idx] = ordered_partition
         # reorder based on index. The data will be automatically equally partitioned by dispatch function
@@ -976,6 +976,8 @@ class RayPPOTrainer:
         # load checkpoint before doing anything
         self._load_checkpoint()
 
+        current_epoch = self.global_steps // len(self.train_dataloader)
+
         # perform validation before training
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
@@ -1006,7 +1008,7 @@ class RayPPOTrainer:
         )
         next_step_profile = False
 
-        for epoch in range(self.config.trainer.total_epochs):
+        for epoch in range(current_epoch, self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
                 metrics = {}
                 timing_raw = {}
@@ -1101,19 +1103,21 @@ class RayPPOTrainer:
                         else:
                             reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
-                    from verl.trainer.ppo.rollout_corr_helper import (
-                        compute_rollout_correction_and_add_to_batch,
-                        maybe_apply_rollout_correction,
-                    )
-
+                    # Operating Mode Selection:
+                    # - Bypass mode: Sets old_log_probs = rollout_log_probs (2 policies: π_rollout, π_θ)
+                    # - Decoupled mode: Recomputes old_log_probs as proximal anchor (3 policies: π_rollout, π_old, π_θ)
+                    #   Note: π_old computed once per data batch, serves as stable reference during mini-batch updates
                     rollout_corr_config = self.config.algorithm.get("rollout_correction", None)
-                    need_recomputation = maybe_apply_rollout_correction(
-                        batch=batch,
-                        rollout_corr_config=rollout_corr_config,
-                        policy_loss_config=self.config.actor_rollout_ref.actor.policy_loss,
-                    )
-                    if need_recomputation:
-                        # LEGACY MODE: Compute old_log_probs from actor
+                    bypass_recomputing_logprobs = rollout_corr_config and rollout_corr_config.get("bypass_mode", False)
+                    if bypass_recomputing_logprobs:  # Use `rollout_log_probs`
+                        from verl.trainer.ppo.rollout_corr_helper import apply_rollout_correction
+
+                        apply_rollout_correction(
+                            batch=batch,
+                            rollout_corr_config=rollout_corr_config,
+                            policy_loss_config=self.config.actor_rollout_ref.actor.policy_loss,
+                        )
+                    else:  # Recompute old_log_probs
                         with marked_timer("old_log_prob", timing_raw, color="blue"):
                             old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                             entropys = old_log_prob.batch["entropys"]
@@ -1168,11 +1172,18 @@ class RayPPOTrainer:
                         else:
                             batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
 
-                        # Compute rollout correction weights centrally (once per batch)
-                        # This corrects for off-policy issues (policy mismatch, model staleness, etc.)
-                        # Also computes off-policy diagnostic metrics (KL, PPL, etc.)
-                        if rollout_corr_config is not None and "rollout_log_probs" in batch.batch:
-                            batch, is_metrics = compute_rollout_correction_and_add_to_batch(batch)
+                        # Compute rollout correction: IS weights, rejection sampling, and metrics
+                        # Only runs in decoupled mode (computes once per batch using stable π_old)
+                        # In bypass mode, this is skipped - actor computes metrics from evolving π_θ vs π_rollout
+                        if (
+                            rollout_corr_config is not None
+                            and "rollout_log_probs" in batch.batch
+                            and not bypass_recomputing_logprobs  # Only in decoupled mode
+                        ):
+                            from verl.trainer.ppo.rollout_corr_helper import compute_rollout_correction_and_add_to_batch
+
+                            # Compute IS weights, apply rejection sampling, compute metrics
+                            batch, is_metrics = compute_rollout_correction_and_add_to_batch(batch, rollout_corr_config)
                             # IS and off-policy metrics already have rollout_corr/ prefix
                             metrics.update(is_metrics)
 
@@ -1202,7 +1213,10 @@ class RayPPOTrainer:
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
                         with marked_timer("update_actor", timing_raw, color="red"):
-                            batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
+                            rollout_config = self.config.actor_rollout_ref.rollout
+                            batch.meta_info["multi_turn"] = rollout_config.multi_turn.enable
+                            # TODO: Make "temperature" single source of truth from generation.
+                            batch.meta_info["temperature"] = rollout_config.temperature
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)

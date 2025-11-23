@@ -23,6 +23,8 @@ accuracy, etc.).
 
 from collections import defaultdict
 from typing import Any, Callable, Optional
+import asyncio
+import inspect
 
 import ray
 import torch
@@ -32,6 +34,15 @@ from verl import DataProto
 from verl.utils.reward_score import default_compute_score
 from verl.workers.reward_manager import register
 from verl.workers.reward_manager.abstract import AbstractRewardManager
+
+# Also register in new experimental reward loop registry for compatibility
+try:
+    from verl.experimental.reward.reward_loop.registry import register as register_reward_loop
+    from verl.experimental.reward.reward_loop.base import RewardLoopManagerBase
+    _has_reward_loop_registry = True
+except ImportError:
+    _has_reward_loop_registry = False
+    RewardLoopManagerBase = object  # Fallback
 
 
 @ray.remote
@@ -191,6 +202,156 @@ def run_reward_scoring_ray(module_info, completions, references, tasks, extra_in
     return scores
 
 
+def _register_in_both_registries(name):
+    """Helper to register in both old and new registries."""
+    def decorator(cls):
+        # Register in old registry
+        cls = register(name)(cls)
+        # Register in new registry if available
+        if _has_reward_loop_registry:
+            cls = register_reward_loop(name)(cls)
+        return cls
+    return decorator
+
+
+# New reward loop implementation
+if _has_reward_loop_registry:
+    @register_reward_loop("geoguessr")
+    class GeoGuessrRewardLoopManager(RewardLoopManagerBase):
+        """
+        GeoGuessr Reward Loop Manager for the new experimental reward loop system.
+        """
+
+        def __init__(self, config, tokenizer, compute_score=None, reward_router_address=None, reward_model_tokenizer=None):
+            """
+            Initialize GeoGuessr Reward Loop Manager with new interface.
+
+            Args:
+                config: Configuration object
+                tokenizer: Tokenizer for decoding model outputs
+                compute_score: Reward function (should return dict with 'score' key)
+                reward_router_address: Address for reward router (unused)
+                reward_model_tokenizer: Tokenizer for reward model (unused)
+            """
+            super().__init__(config, tokenizer)
+            self.compute_score = compute_score or default_compute_score
+            self.is_async_reward_score = inspect.iscoroutinefunction(self.compute_score)
+            self.reward_router_address = reward_router_address
+            self.reward_model_tokenizer = reward_model_tokenizer
+
+            # Get num_examine from config
+            self.num_examine = getattr(config.reward_model, 'num_examine', 1)
+
+            # Prepare module info for Ray remote workers
+            self._prepare_module_info()
+
+        def _prepare_module_info(self):
+            """
+            Prepare module information for loading the reward function in remote workers.
+            This avoids serialization issues with custom modules.
+            """
+            import sys
+            from functools import partial
+
+            # Check if compute_score is a wrapped function (partial)
+            actual_func = self.compute_score
+            reward_kwargs = {}
+
+            if isinstance(self.compute_score, partial):
+                # It's wrapped by partial(_call_with_kwargs, raw_fn, reward_kwargs)
+                # Extract the actual reward function
+                if len(self.compute_score.args) >= 2:
+                    actual_func = self.compute_score.args[0]  # The raw_fn
+                    reward_kwargs = self.compute_score.args[1] if len(self.compute_score.args) > 1 else {}
+                    print(f"[GeoGuessrRewardLoopManager] Detected wrapped function, extracted actual_func")
+
+            # Check if using custom reward function
+            if 'custom_module' in sys.modules:
+                custom_module = sys.modules['custom_module']
+
+                # Find which function is being used
+                function_name = None
+                for name in dir(custom_module):
+                    obj = getattr(custom_module, name)
+                    if callable(obj) and obj == actual_func:
+                        function_name = name
+                        break
+
+                if function_name:
+                    self.module_info = {
+                        'type': 'custom',
+                        'file_path': custom_module.__file__,
+                        'function_name': function_name,
+                        'reward_kwargs': reward_kwargs
+                    }
+                    print(f"[GeoGuessrRewardLoopManager] Using custom reward function: {function_name} from {custom_module.__file__}")
+                else:
+                    self.module_info = {'type': 'default', 'reward_kwargs': {}}
+                    print("[GeoGuessrRewardLoopManager] Using default compute_score")
+            else:
+                self.module_info = {'type': 'default', 'reward_kwargs': {}}
+                print("[GeoGuessrRewardLoopManager] Using default compute_score")
+
+        async def run_single(self, data: DataProto) -> dict:
+            """
+            Compute reward for a single data item asynchronously.
+
+            Args:
+                data: DataProto containing a single sample
+
+            Returns:
+                Dict with 'reward_score' and 'reward_extra_info'
+            """
+            assert len(data) == 1, "Only support single data item"
+            data_item = data[0]
+
+            response_ids = data_item.batch["responses"]
+            response_length = response_ids.shape[-1]
+            valid_response_length = data_item.batch["attention_mask"][-response_length:].sum()
+            valid_response_ids = response_ids[:valid_response_length]
+
+            data_source = data_item.non_tensor_batch["data_source"]
+            ground_truth = data_item.non_tensor_batch["reward_model"]["ground_truth"]
+            extra_info = data_item.non_tensor_batch.get("extra_info", {})
+
+            # Decode response
+            response_str = await self.loop.run_in_executor(
+                None, lambda: self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
+            )
+
+            # Compute score using Ray remote function
+            try:
+                score_dict_list = await self.loop.run_in_executor(
+                    None,
+                    lambda: run_reward_scoring_ray(
+                        self.module_info,
+                        completions=[response_str],
+                        references=[ground_truth],
+                        tasks=[data_source],
+                        extra_info=[extra_info] if extra_info else None,
+                    )
+                )
+                score_dict = score_dict_list[0] if score_dict_list else {"score": 0.0}
+            except Exception as e:
+                print(f"[Error] Reward scoring failed: {e}")
+                import traceback
+                traceback.print_exc()
+                score_dict = {"score": 0.0}
+
+            # Extract score and extra info
+            reward_extra_info = {}
+            if isinstance(score_dict, dict):
+                score = score_dict.get("score", 0.0)
+                for key, value in score_dict.items():
+                    reward_extra_info[key] = value
+            else:
+                score = float(score_dict)
+                reward_extra_info["score"] = score
+
+            return {"reward_score": score, "reward_extra_info": reward_extra_info}
+
+
+# Old reward manager implementation
 @register("geoguessr")
 class GeoGuessrRewardManager(AbstractRewardManager):
     """
@@ -372,6 +533,7 @@ class GeoGuessrRewardManager(AbstractRewardManager):
         valid_response_length = data.batch["attention_mask"][:, prompt_length:].sum(dim=-1)
 
         # Decode for printing
+        prompt_str = self.tokenizer.batch_decode(prompt_ids, skip_special_tokens=True)
         sequences_str = self.tokenizer.batch_decode(response_ids, skip_special_tokens=True)
         data_sources = data.non_tensor_batch["data_source"]
 
@@ -406,6 +568,7 @@ class GeoGuessrRewardManager(AbstractRewardManager):
             if already_print_data_sources[data_source] < self.num_examine:
                 already_print_data_sources[data_source] += 1
                 print(f"\n[Data Source] {data_source}")
+                print(f"[Prompt] {prompt_str[i]}")
                 print(f"[Response] {sequences_str[i]}...")
                 print(f"[Score Dict] {score_dict}")
 

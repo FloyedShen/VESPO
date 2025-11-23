@@ -105,7 +105,13 @@ class RLHFDataset(Dataset):
         self.prompt_key = config.get("prompt_key", "prompt")
         self.image_key = config.get("image_key", "images")
         self.video_key = config.get("video_key", "videos")
-        self.image_patch_size = config.get("image_patch_size", 14)
+        # Dynamically get patch_size from processor if available, otherwise use config or default
+        if processor is not None and hasattr(processor, "image_processor") and hasattr(processor.image_processor, "patch_size"):
+            self.image_patch_size = processor.image_processor.patch_size
+            logger.info(f"Using image_patch_size={self.image_patch_size} from processor")
+        else:
+            self.image_patch_size = config.get("image_patch_size", 14)
+            logger.info(f"Using image_patch_size={self.image_patch_size} from config (processor not available)")
         self.max_prompt_length = config.get("max_prompt_length", 1024)
         self.return_raw_chat = config.get("return_raw_chat", False)
         self.return_full_prompt = config.get("return_full_prompt", False)

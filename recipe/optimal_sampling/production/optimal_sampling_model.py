@@ -68,7 +68,9 @@ class AlphaComputer:
                  tol: float = 1e-6, max_iter: int = 12,
                  constraint_to_target: bool = False,
                  target_top_k: int = -1,
-                 target_top_p: float = 1.0):
+                 target_top_p: float = 1.0,
+                 alpha_min: float = 0.5,
+                 alpha_max: float = 1.0):
         """
         Args:
             method: alpha计算方法 ["fixed", "kl_symmetry", "reverse_kl_symmetry", "ess_balance", "entropy"]
@@ -78,9 +80,12 @@ class AlphaComputer:
             constraint_to_target: 是否限制在π_t的support上（推荐True）
             target_top_k: π_t的top-k限制（-1表示不限制）
             target_top_p: π_t的top-p限制（1.0表示不限制）
+            alpha_min: alpha的最小值（默认0.5，确保至少50%的π_t权重）
+            alpha_max: alpha的最大值（默认1.0，允许完全使用π_t）
 
         Note:
             α表示Teacher (π_t)的权重。通常期望α > 0.5，因为Teacher模型质量更高。
+            alpha_min=0.5 可以防止base model产生重复/乱码（稳定性测试表明0.3太低）
         """
         self.method = method
         self.fixed_alpha = fixed_alpha
@@ -92,6 +97,10 @@ class AlphaComputer:
         self.constraint_to_target = constraint_to_target
         self.target_top_k = target_top_k
         self.target_top_p = target_top_p
+
+        # ✨ 新增：Alpha范围限制（防止极端值）
+        self.alpha_min = alpha_min
+        self.alpha_max = alpha_max
 
     def compute(self, probs_theta: torch.Tensor, probs_t: torch.Tensor) -> torch.Tensor:
         """
@@ -341,15 +350,18 @@ class AlphaComputer:
         #         alpha_result = torch.where(converged, alpha_result, alpha_entropy)
 
         # ✅ 数值稳定性保护6：最终clamp和NaN检查
-        alpha_result = torch.clamp(alpha_result, min=0.0, max=1.0)
+        # ✨ 修复：使用alpha_min/alpha_max防止极端值（Sample #3问题）
+        alpha_result = torch.clamp(alpha_result, min=self.alpha_min, max=self.alpha_max)
 
         # ✨ 增强6：最终NaN检查
         if torch.isnan(alpha_result).any():
             nan_count = torch.isnan(alpha_result).sum().item()
             print(f"❌ CRITICAL: Alpha has {nan_count} NaN after KL symmetry computation")
-            print(f"   Falling back to α=0.75 for all NaN positions")
+            # 使用alpha范围的中点作为fallback
+            fallback_alpha = (self.alpha_min + self.alpha_max) / 2
+            print(f"   Falling back to α={fallback_alpha:.2f} for all NaN positions")
             alpha_result = torch.where(torch.isnan(alpha_result),
-                                        torch.tensor(0.75, device=device),
+                                        torch.tensor(fallback_alpha, device=device),
                                         alpha_result)
 
         return alpha_result
@@ -438,11 +450,13 @@ class AlphaComputer:
         alpha_result = (alpha_low + alpha_high) / 2
 
         # ✅ 数值稳定性保护4：最终clamp
-        alpha_result = torch.clamp(alpha_result, min=0.1, max=0.9)
+        # ✨ 修复：使用alpha_min/alpha_max
+        alpha_result = torch.clamp(alpha_result, min=self.alpha_min, max=self.alpha_max)
 
         # 处理之前检测到的nearly_identical情况
         if nearly_identical.any():
-            alpha_result = torch.where(nearly_identical, torch.tensor(0.5, device=device), alpha_result)
+            mid_alpha = (self.alpha_min + self.alpha_max) / 2
+            alpha_result = torch.where(nearly_identical, torch.tensor(mid_alpha, device=device), alpha_result)
 
         return alpha_result
 
@@ -542,9 +556,10 @@ class AlphaComputer:
             alpha_result = torch.where(need_fallback, alpha_fallback, alpha_result)
 
         # ========================================
-        # 第6步：最终限制到[0.1, 0.9]
+        # 第6步：最终限制
         # ========================================
-        return torch.clamp(alpha_result, 0.1, 0.9)
+        # ✨ 修复：使用alpha_min/alpha_max
+        return torch.clamp(alpha_result, self.alpha_min, self.alpha_max)
 
     def _entropy(self, probs_theta: torch.Tensor, probs_t: torch.Tensor) -> torch.Tensor:
         """熵公式快速近似
@@ -560,7 +575,8 @@ class AlphaComputer:
         h_theta = -(probs_theta * torch.log(probs_theta + self.eps)).sum(dim=-1)
         h_t = -(probs_t * torch.log(probs_t + self.eps)).sum(dim=-1)
         alpha = h_theta / (h_theta + h_t + self.eps)
-        return torch.clamp(alpha, 0.0, 1.0)
+        # ✨ 修复：使用alpha_min/alpha_max
+        return torch.clamp(alpha, self.alpha_min, self.alpha_max)
 
     def _geometric_mean(self, p1: torch.Tensor, p2: torch.Tensor,
                        alpha: torch.Tensor) -> torch.Tensor:
@@ -665,6 +681,8 @@ class OptimalSamplingModel:
         alpha_method: str = "kl_symmetry",
         fixed_alpha: float = 0.5,
         alpha_tol: float = 1e-6,
+        alpha_min: float = 0.5,
+        alpha_max: float = 1.0,
         constraint_to_target: bool = False,
         target_top_k: int = -1,
         target_top_p: float = 1.0,
@@ -681,6 +699,8 @@ class OptimalSamplingModel:
             alpha_method: alpha计算方法 ["fixed", "kl_symmetry", "reverse_kl_symmetry", "entropy", "ess_balance"]
             fixed_alpha: 固定alpha值 (当alpha_method="fixed"时)
             alpha_tol: KL对称求解容差
+            alpha_min: ✨ alpha最小值 (默认0.5，防止base model产生重复)
+            alpha_max: ✨ alpha最大值 (默认1.0，允许完全使用π_t)
             constraint_to_target: ✨ 是否限制在π_t的support上（推荐True，提升数值稳定性）
             target_top_k: ✨ π_t的top-k限制（-1表示不限制）
             target_top_p: ✨ π_t的top-p限制（1.0表示不限制）
@@ -702,14 +722,16 @@ class OptimalSamplingModel:
         # 初始化模型（仅支持transformers backend）
         self._init_transformers(model_theta_path, model_t_path, **kwargs)
 
-        # 初始化alpha计算器（带support约束）
+        # 初始化alpha计算器（带support约束和alpha范围限制）
         self.alpha_computer = AlphaComputer(
             method=alpha_method,
             fixed_alpha=fixed_alpha,
             tol=alpha_tol,
             constraint_to_target=constraint_to_target,
             target_top_k=target_top_k,
-            target_top_p=target_top_p
+            target_top_p=target_top_p,
+            alpha_min=alpha_min,
+            alpha_max=alpha_max
         )
 
         # 初始化诊断计算器
@@ -1112,6 +1134,11 @@ class OptimalSamplingModel:
         # 第2步：Tokenize（可能不同）
         # ========================================
         # Tokenize π_θ的prompt
+        # ✅ 修复：对于decoder模型，必须使用left padding
+        # Right padding会破坏prompt的上下文
+        original_padding_side_theta = self.tokenizer.padding_side
+        self.tokenizer.padding_side = 'left'
+
         inputs_theta = self.tokenizer(
             prompts,
             return_tensors="pt",
@@ -1124,6 +1151,10 @@ class OptimalSamplingModel:
 
         # Tokenize π_t的prompt（如果不同）
         if use_different_prompts:
+            # ✅ 修复：π_t也需要left padding
+            original_padding_side_t = self.tokenizer_t.padding_side
+            self.tokenizer_t.padding_side = 'left'
+
             # 检查tokenizer是否相同
             if self.same_model:
                 # 同一个模型，tokenizer肯定相同
@@ -1143,12 +1174,18 @@ class OptimalSamplingModel:
                     max_length=2048
                 )
 
+            # 恢复原始padding_side
+            self.tokenizer_t.padding_side = original_padding_side_t
+
             input_ids_t = inputs_t["input_ids"].to(self.model_t.device)
             attention_mask_t = inputs_t["attention_mask"].to(self.model_t.device)
         else:
             # 使用相同的prompt（默认行为）
             input_ids_t = input_ids_theta
             attention_mask_t = attention_mask_theta
+
+        # 恢复原始padding_side
+        self.tokenizer.padding_side = original_padding_side_theta
 
         # ========================================
         # 准备存储
@@ -1184,6 +1221,14 @@ class OptimalSamplingModel:
 
             # π_t 使用 input_ids_t（可能不同）
             if not self.same_model:
+                # 🔍 Debug: 检查Prefill阶段的input
+                print(f"[DEBUG Prefill] input_ids_t shape: {input_ids_t.shape}")
+                print(f"[DEBUG Prefill] attention_mask_t shape: {attention_mask_t.shape}")
+                for b in range(batch_size):
+                    print(f"[DEBUG Prefill, batch={b}] input_ids_t length: {input_ids_t[b].shape[0]}")
+                    print(f"[DEBUG Prefill, batch={b}] Last 10 tokens: {input_ids_t[b, -10:].tolist()}")
+                    print(f"[DEBUG Prefill, batch={b}] Decoded last 30 chars: {repr(self.tokenizer_t.decode(input_ids_t[b])[-30:])}")
+
                 outputs_t = self.model_t(
                     input_ids=input_ids_t,
                     attention_mask=attention_mask_t,
@@ -1191,6 +1236,13 @@ class OptimalSamplingModel:
                 )
                 past_key_values_t = outputs_t.past_key_values
                 logits_t = outputs_t.logits[:, -1, :]
+
+                # 🔍 Debug: 检查Prefill阶段的output logits
+                print(f"[DEBUG Prefill] logits_t shape after Prefill: {logits_t.shape}")
+                for b in range(batch_size):
+                    top_3_logits, top_3_idx = torch.topk(logits_t[b], k=3)
+                    print(f"[DEBUG Prefill, batch={b}] Top-3 logits: {top_3_logits.tolist()}")
+                    print(f"[DEBUG Prefill, batch={b}] Top-3 token_ids: {top_3_idx.tolist()}")
             else:
                 past_key_values_t = None
                 logits_t = logits_theta
@@ -1200,12 +1252,29 @@ class OptimalSamplingModel:
                 # ✅ 对齐logits并计算概率（处理不同tokenizer）
                 probs_theta, probs_t = self._align_logits(logits_theta, logits_t, temperature)
 
+                # 🔍 Debug: 检查logits是否正常
+                if step == 0:
+                    print(f"[DEBUG step={step}] logits_t shape: {logits_t.shape}")
+                    print(f"[DEBUG step={step}] probs_t shape: {probs_t.shape}")
+                    for b in range(batch_size):
+                        top_5_probs, top_5_idx = torch.topk(probs_t[b], k=5)
+                        print(f"[DEBUG step={step}, batch={b}] Top-5 tokens from π_t:")
+                        for rank, (prob, idx) in enumerate(zip(top_5_probs, top_5_idx), 1):
+                            token_text = self.tokenizer_t.decode([idx.item()])
+                            print(f"    {rank}. token_id={idx.item()}, prob={prob.item():.4f}, text={repr(token_text)}")
+
                 # ✅ 强制第一个token使用π_t
                 if step == 0 and self.force_target_for_first_token:
                     # 第一个token直接使用π_t，不进行混合
                     q_star = probs_t
                     # ✅ 修改：α=1 表示完全使用π_t（Teacher）
                     alpha = torch.ones(batch_size, device=probs_theta.device)
+
+                    # 🔍 Debug: 检查第一个token的分布
+                    if step == 0:
+                        for b in range(batch_size):
+                            top_prob, top_idx = torch.topk(q_star[b], k=1)
+                            print(f"[DEBUG step={step}, batch={b}] First token forcing: top-1 token_id={top_idx.item()}, prob={top_prob.item():.4f}")
                 else:
                     # 后续token正常计算alpha和q*
                     # ✨ 改进：先计算alpha，再计算q*，最后施加约束
@@ -1217,8 +1286,11 @@ class OptimalSamplingModel:
                     q_star = self.alpha_computer.apply_constraint_to_q_star(q_star, probs_t)
 
                 # 应用 top-p / top-k
-                if top_p < 1.0 or top_k > 0:
+                # ✅ 修复：第一个token强制使用π_t时，跳过filtering以保持分布不变
+                if (top_p < 1.0 or top_k > 0) and not (step == 0 and self.force_target_for_first_token):
                     q_star = self._apply_sampling_filters(q_star, top_p, top_k)
+                elif step == 0:
+                    print(f"[DEBUG step={step}] Skipping filtering for first token (top_p={top_p}, top_k={top_k})")
 
                 # ✅ 采样前安全检查
                 if torch.isnan(q_star).any() or torch.isinf(q_star).any() or (q_star < 0).any():
@@ -1342,12 +1414,29 @@ class OptimalSamplingModel:
                 # ✅ 对齐logits并计算概率（处理不同tokenizer）
                 probs_theta, probs_t = self._align_logits(logits_theta, logits_t, temperature)
 
+                # 🔍 Debug: 检查logits是否正常
+                if step == 0:
+                    print(f"[DEBUG step={step}] logits_t shape: {logits_t.shape}")
+                    print(f"[DEBUG step={step}] probs_t shape: {probs_t.shape}")
+                    for b in range(batch_size):
+                        top_5_probs, top_5_idx = torch.topk(probs_t[b], k=5)
+                        print(f"[DEBUG step={step}, batch={b}] Top-5 tokens from π_t:")
+                        for rank, (prob, idx) in enumerate(zip(top_5_probs, top_5_idx), 1):
+                            token_text = self.tokenizer_t.decode([idx.item()])
+                            print(f"    {rank}. token_id={idx.item()}, prob={prob.item():.4f}, text={repr(token_text)}")
+
                 # ✅ 强制第一个token使用π_t
                 if step == 0 and self.force_target_for_first_token:
                     # 第一个token直接使用π_t，不进行混合
                     q_star = probs_t
                     # ✅ 修改：α=1 表示完全使用π_t（Teacher）
                     alpha = torch.ones(batch_size, device=probs_theta.device)
+
+                    # 🔍 Debug: 检查第一个token的分布
+                    if step == 0:
+                        for b in range(batch_size):
+                            top_prob, top_idx = torch.topk(q_star[b], k=1)
+                            print(f"[DEBUG step={step}, batch={b}] First token forcing: top-1 token_id={top_idx.item()}, prob={top_prob.item():.4f}")
                 else:
                     # 后续token正常计算alpha和q*
                     # ✨ 改进：先计算alpha，再计算q*，最后施加约束
@@ -1359,8 +1448,11 @@ class OptimalSamplingModel:
                     q_star = self.alpha_computer.apply_constraint_to_q_star(q_star, probs_t)
 
                 # 应用 top-p / top-k
-                if top_p < 1.0 or top_k > 0:
+                # ✅ 修复：第一个token强制使用π_t时，跳过filtering以保持分布不变
+                if (top_p < 1.0 or top_k > 0) and not (step == 0 and self.force_target_for_first_token):
                     q_star = self._apply_sampling_filters(q_star, top_p, top_k)
+                elif step == 0:
+                    print(f"[DEBUG step={step}] Skipping filtering for first token (top_p={top_p}, top_k={top_k})")
 
                 # ✅ 采样前安全检查
                 if torch.isnan(q_star).any() or torch.isinf(q_star).any() or (q_star < 0).any():
@@ -1505,12 +1597,15 @@ class OptimalSamplingModel:
         # θ的概率分布（保持不变）
         probs_theta = F.softmax(logits_theta / temperature, dim=-1)
 
+        # ✅ 修复：先计算一次 softmax，避免循环中重复计算
+        probs_t = F.softmax(logits_t / temperature, dim=-1)
+
         # 将t的概率映射到θ的vocabulary
         probs_t_aligned = torch.zeros_like(probs_theta)
 
         # 对于θ的每个token，找到t中的对应token并复制概率
         for id_theta, id_t in self.vocab_map_theta_to_t.items():
-            probs_t_aligned[:, id_theta] = F.softmax(logits_t / temperature, dim=-1)[:, id_t]
+            probs_t_aligned[:, id_theta] = probs_t[:, id_t]  # ✅ 修复：直接复制，不重复计算softmax
 
         # 重新归一化（因为可能有unmapped tokens）
         probs_t_aligned = probs_t_aligned / (probs_t_aligned.sum(dim=-1, keepdim=True) + 1e-10)
@@ -2271,9 +2366,11 @@ def create_optimal_sampling_model(
     model_theta: str,
     model_t: Optional[str] = None,
     alpha_method: str = "kl_symmetry",
+    alpha_min: float = 0.3,
+    alpha_max: float = 1.0,
     constraint_to_target: bool = True,
-    target_top_k: int = 50,
-    target_top_p: float = 1.0,
+    target_top_k: int = 32,
+    target_top_p: float = 0.95,
     force_target_for_special_tokens: bool = True,
     force_target_for_first_token: bool = True,
     **kwargs
@@ -2285,6 +2382,8 @@ def create_optimal_sampling_model(
         model_theta: π_θ模型路径 (Base model, 如Llama-2-7b)
         model_t: π_t模型路径（Teacher/Instruct model, 如Llama-2-7b-chat）
         alpha_method: Alpha计算方法（α表示Teacher权重）
+        alpha_min: ✨ alpha最小值（默认0.5，防止base model产生重复/乱码）
+        alpha_max: ✨ alpha最大值（默认1.0，允许完全使用π_t）
         constraint_to_target: ✨ 是否限制在π_t的support上（推荐True）
         target_top_k: ✨ π_t的top-k限制
         target_top_p: ✨ π_t的top-p限制
@@ -2298,6 +2397,11 @@ def create_optimal_sampling_model(
         - α = 1 → 完全使用Teacher模型
         - α > 0.5 → 更接近Teacher（通常期望）
         - 混合公式: q*(x) = π_θ(x)^(1-α) × π_t(x)^α
+
+        ✨ alpha_min=0.5 可防止Sample #3类型的乱码重复问题：
+        - 当KL symmetry计算出极低的α时（如0.172）
+        - base model可能产生重复字符（如"ACACAC..."）
+        - alpha_min确保至少使用50%的Teacher权重
 
     Examples:
         >>> # 基础使用（同一个模型）
@@ -2330,6 +2434,8 @@ def create_optimal_sampling_model(
         ...     model_theta="Qwen/Qwen3-8B-Base",
         ...     model_t="Qwen/Qwen3-8B",
         ...     alpha_method="kl_symmetry",
+        ...     alpha_min=0.3,                          # 防止乱码
+        ...     alpha_max=1.0,
         ...     constraint_to_target=True,              # Support约束
         ...     target_top_k=100,
         ...     force_target_for_special_tokens=True,   # 对EOS等特殊token使用π_t
@@ -2356,6 +2462,8 @@ def create_optimal_sampling_model(
         model_theta_path=model_theta,
         model_t_path=model_t,
         alpha_method=alpha_method,
+        alpha_min=alpha_min,
+        alpha_max=alpha_max,
         constraint_to_target=constraint_to_target,
         target_top_k=target_top_k,
         target_top_p=target_top_p,

@@ -49,7 +49,7 @@ import torch.multiprocessing as mp
 from typing import List, Dict, Optional
 from pathlib import Path
 from tqdm import tqdm
-from datasets import load_dataset, load_from_disk, Dataset
+from datasets import load_dataset, load_from_disk, Dataset, concatenate_datasets
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -429,7 +429,7 @@ def worker_process(
                     model.tokenizer_t,
                     force_nlt_in_theta=True,  # Base模型使用自然语言模板
                     add_generation_prompt=True,
-                    add_think_token=True,
+                    add_think_token=False,
                 )
             except Exception as e:
                 print(f"[GPU {rank}] Warning: Failed to create dual prompts: {e}")
@@ -523,6 +523,27 @@ def worker_process(
                     # ✨ 更新已处理样本计数
                     processed_count += 1
 
+                # ✨ 对于parquet格式，定期保存到磁盘（防止OOM和数据丢失）
+                # 每32个batch（或累积到一定数量）保存一次
+                SAVE_INTERVAL_BATCHES = 16  # 每16个batch保存一次
+                if output_format in ["parquet", "both"] and len(all_data) >= SAVE_INTERVAL_BATCHES * batch_size:
+                    print(f"[GPU {rank}] Intermediate save: {len(all_data)} samples...")
+                    # 保存到临时parquet文件（使用追加模式）
+                    parquet_file = output_file if output_format == "parquet" else output_file_base.with_suffix('.parquet')
+                    if parquet_file.exists():
+                        # 追加模式：读取已有数据，合并后重写（parquet不支持原生追加）
+                        existing_dataset = Dataset.from_parquet(str(parquet_file))
+                        new_dataset = Dataset.from_list(all_data)
+                        combined = concatenate_datasets([existing_dataset, new_dataset])
+                        combined.to_parquet(str(parquet_file))
+                    else:
+                        # 首次保存
+                        dataset = Dataset.from_list(all_data)
+                        dataset.to_parquet(str(parquet_file))
+                    print(f"[GPU {rank}] ✓ Intermediate save completed")
+                    # 清空内存
+                    all_data = []
+
                 # ✨ 保存 checkpoint（每个batch后）
                 checkpoint_data = {
                     "last_processed_idx": batch_end - 1,
@@ -543,15 +564,25 @@ def worker_process(
         if f_diag:
             f_diag.close()
 
-        # 写入parquet文件
+        # 写入parquet文件（最后剩余的数据）
         if output_format in ["parquet", "both"]:
             if all_data:
-                print(f"[GPU {rank}] Writing parquet file...")
+                print(f"[GPU {rank}] Writing final parquet data ({len(all_data)} samples)...")
                 # 转换为Dataset并保存
-                dataset = Dataset.from_list(all_data)
                 parquet_file = output_file if output_format == "parquet" else output_file_base.with_suffix('.parquet')
-                dataset.to_parquet(str(parquet_file))
-                print(f"[GPU {rank}] ✓ Parquet saved: {parquet_file}")
+                if parquet_file.exists():
+                    # 追加到已有文件
+                    existing_dataset = Dataset.from_parquet(str(parquet_file))
+                    new_dataset = Dataset.from_list(all_data)
+                    combined = concatenate_datasets([existing_dataset, new_dataset])
+                    combined.to_parquet(str(parquet_file))
+                else:
+                    # 首次保存（如果中间保存没触发）
+                    dataset = Dataset.from_list(all_data)
+                    dataset.to_parquet(str(parquet_file))
+                print(f"[GPU {rank}] ✓ Final parquet saved: {parquet_file}")
+            else:
+                print(f"[GPU {rank}] ✓ All data already saved incrementally")
 
         # ✨ 删除 checkpoint（任务成功完成）
         checkpoint_mgr.remove()
@@ -697,6 +728,22 @@ def main():
                        choices=["float16", "bfloat16", "float32"],
                        help="Data type")
 
+    # ✨ 新增：采样控制参数
+    parser.add_argument("--constraint_to_target", action="store_true", default=True,
+                       help="Constrain q* to π_t's support (default: True)")
+    parser.add_argument("--no_constraint_to_target", dest="constraint_to_target",
+                       action="store_false",
+                       help="Disable constraint to target")
+    parser.add_argument("--target_top_k", type=int, default=64,
+                       help="Top-k for π_t support constraint (default: 128, was 32)")
+    parser.add_argument("--target_top_p", type=float, default=0.95,
+                       help="Top-p for π_t support constraint (default: 0.95)")
+    parser.add_argument("--force_first_token", action="store_true", default=True,
+                       help="Force first token to use π_t (default: True)")
+    parser.add_argument("--no_force_first_token", dest="force_first_token",
+                       action="store_false",
+                       help="Disable forcing first token")
+
     # 输出
     parser.add_argument("--output", type=str, required=True,
                        help="Output file path")
@@ -751,7 +798,13 @@ def main():
 
     # 构建模型kwargs
     model_kwargs = {
-        "dtype": dtype_map[args.dtype]
+        "dtype": dtype_map[args.dtype],
+        # ✅ 新增：传递采样控制参数
+        "constraint_to_target": args.constraint_to_target,
+        "target_top_k": args.target_top_k,
+        "target_top_p": args.target_top_p,
+        "force_target_for_first_token": args.force_first_token,
+        "force_target_for_special_tokens": True,  # 始终启用special token处理
     }
 
     # if args.load_in_4bit:

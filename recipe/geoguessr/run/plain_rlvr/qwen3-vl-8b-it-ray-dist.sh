@@ -21,8 +21,9 @@ ALGO="plain_rlvr_grpo"
 OBJECT="geoguessr_reward_official"
 DATASET="all"
 
-MODEL_FULL="Qwen/Qwen2.5-VL-7B-Instruct"
-MODEL="qwen2_5_vl_7b-it-custom_rm-ray"
+
+MODEL_FULL="Qwen/Qwen3-VL-8B-Instruct"
+MODEL="qwen3_vl_8b-it-custom_rm-ray-dist"
 
 PROJECT_NAME="verl_grpo_geoguessr"
 EXP_NAME="${ALGO}_${OBJECT}_${DATASET}_${MODEL}_${ENGINE}"
@@ -39,8 +40,8 @@ VAL_FILES="[$DATA_DIR/geochain_mini_test_chunk_0000.parquet,$DATA_DIR/gaea_bench
 # Build custom dataset arguments as array
 CUSTOM_DATASET_ARGS=()
 if [ "$USE_CUSTOM_DATASET" = "true" ]; then
-    CUSTOM_DATASET_ARGS+=("data.custom_cls.name=GeoguessrRLHFDataset")
-    CUSTOM_DATASET_ARGS+=("data.custom_cls.path=\"$PROJECT_DIR/recipe/geoguessr/geoguessr_dataset.py\"")
+    CUSTOM_DATASET_ARGS+=("data.custom_cls.name=GeoguessrRLHFDatasetLazy")
+    CUSTOM_DATASET_ARGS+=("data.custom_cls.path=\"$PROJECT_DIR/recipe/geoguessr/geoguessr_dataset_lazy.py\"")
     # Escape the prompts properly for Hydra by wrapping in quotes
     CUSTOM_DATASET_ARGS+=("+data.custom_system_prompt=\"$CUSTOM_SYSTEM_PROMPT\"")
     CUSTOM_DATASET_ARGS+=("+data.custom_user_prompt_template=\"$CUSTOM_USER_PROMPT_TEMPLATE\"")
@@ -69,8 +70,8 @@ ray job submit --no-wait \
     custom_reward_function.name=$OBJECT \
     data.train_files="$TRAIN_FILES" \
     data.val_files="$VAL_FILES" \
-    data.train_batch_size=2048 \
-    data.val_batch_size=2048 \
+    data.train_batch_size=8192 \
+    data.val_batch_size=8192 \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
     actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \
@@ -83,8 +84,8 @@ ray job submit --no-wait \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.use_fused_kernels=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=2048 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=32 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=8192 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=128 \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.kl_loss_coef=0.01 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
@@ -93,17 +94,17 @@ ray job submit --no-wait \
     actor_rollout_ref.actor.use_torch_compile=False \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=128 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.data_parallel_size=8 \
     actor_rollout_ref.rollout.name=$ENGINE \
     +actor_rollout_ref.rollout.engine_kwargs.vllm.disable_mm_preprocessor_cache=True \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.55 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     actor_rollout_ref.rollout.enforce_eager=True \
     actor_rollout_ref.rollout.free_cache_engine=True \
     actor_rollout_ref.rollout.n=8 \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=128 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
     reward_model.launch_reward_fn_async=True \
@@ -118,5 +119,7 @@ ray job submit --no-wait \
     trainer.test_freq=10 \
     trainer.total_epochs=1 \
     trainer.val_before_train=True \
+    +data.enable_distributed_preprocessing=True \
+    +data.distributed_preprocessing_workers=64 \
     "${CUSTOM_DATASET_ARGS[@]}" \
     $@

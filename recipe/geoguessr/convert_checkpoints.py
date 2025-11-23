@@ -114,7 +114,7 @@ def is_checkpoint_converted(output_path: Path) -> bool:
 
     Returns:
         True if already converted, False otherwise
-    """
+"""
     print(output_path)
     if not output_path.exists():
         return False

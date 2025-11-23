@@ -4,7 +4,7 @@ python generate_data_parallel.py \
       --model_theta Qwen/Qwen3-4B-Base \
       --model_t Qwen/Qwen3-14B \
       --dataset agentica-org/DeepScaleR-Preview-Dataset \
-      --output ./data/deepscaler_q14b_q4bb/kl_symmetry.parquet \
+      --output ./data/deepscaler_q14b_q4bb_new/kl_symmetry.parquet \
       --output_format parquet \
       --strategy data_parallel \
       --num_gpus 8 \
@@ -19,7 +19,7 @@ python generate_data_parallel.py \
       --model_theta Qwen/Qwen3-4B-Base \
       --model_t Qwen/Qwen3-14B \
       --dataset agentica-org/DeepScaleR-Preview-Dataset \
-      --output ./data/deepscaler_q14b_q4bb/ess_balance.parquet \
+      --output ./data/deepscaler_q14b_q4bb_new/ess_balance.parquet \
       --output_format parquet \
       --strategy data_parallel \
       --num_gpus 8 \
@@ -35,7 +35,7 @@ python generate_data_parallel.py \
       --model_theta Qwen/Qwen3-4B-Base \
       --model_t Qwen/Qwen3-14B \
       --dataset agentica-org/DeepScaleR-Preview-Dataset \
-      --output ./data/deepscaler_q14b_q4bb/fixed_50.parquet \
+      --output ./data/deepscaler_q14b_q4bb_new/fixed_50.parquet \
       --output_format parquet \
       --strategy data_parallel \
       --num_gpus 8 \
@@ -52,7 +52,7 @@ python generate_data_parallel.py \
       --model_theta Qwen/Qwen3-4B-Base \
       --model_t Qwen/Qwen3-14B \
       --dataset agentica-org/DeepScaleR-Preview-Dataset \
-      --output ./data/deepscaler_q14b_q4bb/fixed_25.parquet \
+      --output ./data/deepscaler_q14b_q4bb_new/fixed_25.parquet \
       --output_format parquet \
       --strategy data_parallel \
       --num_gpus 8 \
@@ -70,7 +70,7 @@ python generate_data_parallel.py \
       --model_theta Qwen/Qwen3-4B-Base \
       --model_t Qwen/Qwen3-14B \
       --dataset agentica-org/DeepScaleR-Preview-Dataset \
-      --output ./data/deepscaler_q14b_q4bb/fixed_75.parquet \
+      --output ./data/deepscaler_q14b_q4bb_new/fixed_75.parquet \
       --output_format parquet \
       --strategy data_parallel \
       --num_gpus 8 \
@@ -87,7 +87,7 @@ python generate_data_parallel.py \
       --model_theta Qwen/Qwen3-4B-Base \
       --model_t Qwen/Qwen3-14B \
       --dataset agentica-org/DeepScaleR-Preview-Dataset \
-      --output ./data/deepscaler_q14b_q4bb/fixed_00.parquet \
+      --output ./data/deepscaler_q14b_q4bb_new/fixed_00.parquet \
       --output_format parquet \
       --strategy data_parallel \
       --num_gpus 8 \
@@ -105,7 +105,7 @@ python generate_data_parallel.py \
       --model_theta Qwen/Qwen3-4B-Base \
       --model_t Qwen/Qwen3-14B \
       --dataset agentica-org/DeepScaleR-Preview-Dataset \
-      --output ./data/deepscaler_q14b_q4bb/fixed_100.parquet \
+      --output ./data/deepscaler_q14b_q4bb_new/fixed_100.parquet \
       --output_format parquet \
       --strategy data_parallel \
       --num_gpus 8 \

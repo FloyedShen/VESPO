@@ -59,6 +59,45 @@ class GeoguessrRLHFDataset(RLHFDataset):
         logger.info(f"  System prompt: {self.custom_system_prompt if self.custom_system_prompt else 'Using default'}")
         logger.info(f"  User prompt template: {self.custom_user_prompt_template if self.custom_user_prompt_template else 'Using default'}")
 
+    def _validate_image_tokens(self, input_ids, image_grid_thw, processor, model_type="qwen2vl"):
+        """
+        Validate that image tokens match expected features from image_grid_thw.
+        Returns True if valid, False if mismatch detected.
+        """
+        if image_grid_thw is None or len(image_grid_thw) == 0:
+            return True
+
+        import torch
+
+        # Count image tokens in input_ids based on model type
+        if model_type == "qwen2vl" or model_type == "qwen3vl":
+            image_token_id = processor.tokenizer.convert_tokens_to_ids("<|image_pad|>")
+        elif model_type == "glm4v":
+            image_token_id = processor.tokenizer.convert_tokens_to_ids("<|image_pad|>")
+        else:
+            logger.warning(f"Unknown model type: {model_type}, skipping validation")
+            return True
+
+        n_image_tokens = (input_ids == image_token_id).sum().item()
+
+        # Calculate expected features from image_grid_thw
+        spatial_merge_size = processor.image_processor.merge_size
+        expected_features = 0
+        for grid in image_grid_thw:
+            t, h, w = grid[0].item(), grid[1].item(), grid[2].item()
+            llm_grid_h = h // spatial_merge_size
+            llm_grid_w = w // spatial_merge_size
+            expected_features += t * llm_grid_h * llm_grid_w
+
+        if n_image_tokens != expected_features:
+            logger.warning(
+                f"Image token mismatch detected: tokens={n_image_tokens}, expected_features={expected_features}. "
+                f"Difference: {abs(n_image_tokens - expected_features)}. Skipping this sample."
+            )
+            return False
+
+        return True
+
     def __getitem__(self, item):
         """
         Override parent __getitem__ to inject custom system and user prompts.
@@ -121,7 +160,6 @@ class GeoguessrRLHFDataset(RLHFDataset):
 
         # Build messages (handles multimodal content like images)
         messages = self._build_messages(row_dict)
-        model_inputs = {}
 
         if self.processor is not None:
             raw_prompt = self.processor.apply_chat_template(
@@ -197,7 +235,29 @@ class GeoguessrRLHFDataset(RLHFDataset):
             truncation=self.truncation,
         )
 
+        # Validate image tokens before continuing
+        # Note: Both Qwen2VL and Qwen3VL use Qwen2VLImageProcessor (or Qwen2VLImageProcessorFast)
         if self.processor is not None and "Qwen2VLImageProcessor" in self.processor.image_processor.__class__.__name__:
+            image_grid_thw = model_inputs.get("image_grid_thw")
+            model_type = "qwen3vl" if "Qwen3VLProcessor" in self.processor.__class__.__name__ else "qwen2vl"
+            if image_grid_thw is not None and not self._validate_image_tokens(input_ids[0], image_grid_thw, self.processor, model_type):
+                # Validation failed, try next sample
+                logger.warning(f"Skipping sample {item} due to image token mismatch (model_type={model_type}), trying next sample...")
+                next_item = (item + 1) % len(self.dataframe)
+                if next_item == item:
+                    raise RuntimeError("All samples have image token mismatch!")
+                return self.__getitem__(next_item)
+        elif self.processor is not None and "Glm4vImageProcessor" in self.processor.image_processor.__class__.__name__:
+            image_grid_thw = model_inputs.get("image_grid_thw")
+            if image_grid_thw is not None and not self._validate_image_tokens(input_ids[0], image_grid_thw, self.processor, "glm4v"):
+                # Validation failed, try next sample
+                logger.warning(f"Skipping sample {item} due to image token mismatch, trying next sample...")
+                next_item = (item + 1) % len(self.dataframe)
+                if next_item == item:
+                    raise RuntimeError("All samples have image token mismatch!")
+                return self.__getitem__(next_item)
+
+        if self.processor is not None and "Qwen" in self.processor.image_processor.__class__.__name__:
             # qwen-vl mrope
             if "Qwen3VLProcessor" in self.processor.__class__.__name__:
                 from verl.models.transformers.qwen3_vl import get_rope_index

@@ -331,7 +331,39 @@ def calculate_accuracy_metrics(distance_km: float) -> Dict[str, float]:
         Dictionary with accuracy at each threshold (1.0 if within threshold, 0.0 otherwise)
     """
     thresholds = [1, 25, 200, 750, 2500]
-    return {f"acc@{t}km": 1.0 if distance_km <= t else 0.0 for t in thresholds}
+    # Explicitly convert to float to avoid numpy bool_ type issues
+    return {f"acc@{t}km": float(1.0 if float(distance_km) <= t else 0.0) for t in thresholds}
+
+
+def _create_reward_dict(score: float, distance_km: float, geoguessr_points: float, parse_success: bool) -> Dict[str, Any]:
+    """
+    Create a standardized reward dictionary with consistent key order.
+
+    This ensures all reward paths return dictionaries with identical keys in the same order,
+    preventing 'Conflicting values for meta_info key' errors in distributed training.
+
+    Args:
+        score: Normalized reward score [0, 1]
+        distance_km: Distance in kilometers
+        geoguessr_points: GeoGuessr points [0, 5000]
+        parse_success: Whether parsing succeeded
+
+    Returns:
+        Dictionary with all reward metrics in consistent order
+    """
+    # Create dict with consistent key order
+    result = {
+        "score": float(score),
+        "distance@km": float(distance_km),
+        "geoguessr@point": float(geoguessr_points),
+        "parse_success": bool(parse_success),
+        "acc@1km": float(1.0 if float(distance_km) <= 1 else 0.0),
+        "acc@25km": float(1.0 if float(distance_km) <= 25 else 0.0),
+        "acc@200km": float(1.0 if float(distance_km) <= 200 else 0.0),
+        "acc@750km": float(1.0 if float(distance_km) <= 750 else 0.0),
+        "acc@2500km": float(1.0 if float(distance_km) <= 2500 else 0.0),
+    }
+    return result
 
 
 # ============================================================================
@@ -399,17 +431,7 @@ def geoguessr_reward_function(
                 print(f"[GeoGuessr Reward] Failed to parse coordinates from: {solution_str[:100]}")
 
             if return_dict:
-                return {
-                    "score": 0.0,
-                    "distance@km": 20000.0,
-                    "acc@1km": 0.0,
-                    "acc@25km": 0.0,
-                    "acc@200km": 0.0,
-                    "acc@750km": 0.0,
-                    "acc@2500km": 0.0,
-                    "geoguessr@point": 0.0,
-                    "parse_success": False
-                }
+                return _create_reward_dict(score=0.0, distance_km=20000.0, geoguessr_points=0.0, parse_success=False)
             else:
                 return 0.0
 
@@ -434,17 +456,7 @@ def geoguessr_reward_function(
                 print(f"[GeoGuessr Reward] Invalid ground truth format: {ground_truth}")
 
             if return_dict:
-                return {
-                    "score": 0.0,
-                    "distance@km": 20000.0,
-                    "acc@1km": 0.0,
-                    "acc@25km": 0.0,
-                    "acc@200km": 0.0,
-                    "acc@750km": 0.0,
-                    "acc@2500km": 0.0,
-                    "geoguessr@point": 0.0,
-                    "parse_success": False
-                }
+                return _create_reward_dict(score=0.0, distance_km=20000.0, geoguessr_points=0.0, parse_success=False)
             else:
                 return 0.0
 
@@ -474,15 +486,7 @@ def geoguessr_reward_function(
 
         # Return results
         if return_dict:
-            result = {
-                "score": float(reward),
-                "distance@km": float(distance_km),
-                "geoguessr@point": float(geoguessr_points),
-                "parse_success": True
-            }
-            # Add accuracy metrics
-            result.update(calculate_accuracy_metrics(distance_km))
-            return result
+            return _create_reward_dict(score=reward, distance_km=distance_km, geoguessr_points=geoguessr_points, parse_success=True)
         else:
             return float(reward)
 
@@ -493,17 +497,7 @@ def geoguessr_reward_function(
             print(f"  Ground truth: {ground_truth}")
 
         if extra_info and extra_info.get("return_dict", True):
-            return {
-                "score": 0.0,
-                "distance@km": 20000.0,
-                "acc@1km": 0.0,
-                "acc@25km": 0.0,
-                "acc@200km": 0.0,
-                "acc@750km": 0.0,
-                "acc@2500km": 0.0,
-                "geoguessr@point": 0.0,
-                "parse_success": False
-            }
+            return _create_reward_dict(score=0.0, distance_km=20000.0, geoguessr_points=0.0, parse_success=False)
         else:
             return 0.0
 

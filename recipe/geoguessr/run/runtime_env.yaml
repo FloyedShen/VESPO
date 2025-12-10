@@ -13,6 +13,7 @@ excludes:
   - "**/*.pt"
   - "**/*.parquet"
   - "/validation_outputs"
+  - "**/recipe/optimal_sampling/"
 env_vars:
   TORCH_NCCL_AVOID_RECORD_STREAMS: "1"
   CUDA_DEVICE_MAX_CONNECTIONS: "1"

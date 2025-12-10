@@ -146,6 +146,9 @@ def _get_input_embeds(
     image_mask, video_mask = None, None
     if pixel_values is not None:
         pixel_values = pixel_values.type(model.visual.dtype)
+        # Ensure grid_thw is on the same device as pixel_values
+        if image_grid_thw is not None:
+            image_grid_thw = image_grid_thw.to(pixel_values.device)
         image_embeds, deepstack_image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
         n_image_tokens = (input_ids == model.config.image_token_id).sum().item()
         n_image_features = image_embeds.shape[0]
@@ -164,6 +167,9 @@ def _get_input_embeds(
 
     if pixel_values_videos is not None:
         pixel_values_videos = pixel_values_videos.type(model.visual.dtype)
+        # Ensure grid_thw is on the same device as pixel_values_videos
+        if video_grid_thw is not None:
+            video_grid_thw = video_grid_thw.to(pixel_values_videos.device)
         video_embeds, deepstack_video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
         n_video_tokens = (input_ids == model.config.video_token_id).sum().item()
         n_video_features = video_embeds.shape[0]
@@ -241,6 +247,17 @@ def qwen3_vl_base_forward(
     video_grid_thw: Optional[torch.LongTensor] = None,
     **kwargs,
 ):
+    # Ensure all visual inputs are on the correct device (use input_ids device as reference)
+    target_device = input_ids.device
+    if pixel_values is not None:
+        pixel_values = pixel_values.to(target_device)
+    if pixel_values_videos is not None:
+        pixel_values_videos = pixel_values_videos.to(target_device)
+    if image_grid_thw is not None:
+        image_grid_thw = image_grid_thw.to(target_device)
+    if video_grid_thw is not None:
+        video_grid_thw = video_grid_thw.to(target_device)
+
     input_kwargs = _get_input_embeds(
         self, input_ids, attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw
     )  # avoid lora module having multiple keyword arguments

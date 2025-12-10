@@ -11,7 +11,7 @@ ALGO="plain_rlvr_grpo"
 OBJECT="geoguessr_reward_official"
 DATASET="mix_3x5"
 
-MODEL_FULL="Qwen/Qwen3-VL-8B-Instruct"
+MODEL_FULL="/mnt/tidal-alsh-hilab/usr/shenguobin/modelscope/Qwen/Qwen3-VL-8B-Instruct"
 MODEL="qwen3_vl_8b-it-custom_rm-w_kl"
 
 PROJECT_NAME="verl_grpo_geoguessr"

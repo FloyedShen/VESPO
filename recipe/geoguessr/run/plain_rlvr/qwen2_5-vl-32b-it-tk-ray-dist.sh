@@ -16,12 +16,13 @@ DATA_DIR=${GEOGUESSR_DIR}/verl_data/plain_rlvr
 
 # Configuration for custom dataset
 # Set USE_CUSTOM_DATASET=true to enable custom dataset with configurable prompts
-USE_CUSTOM_DATASET=${USE_CUSTOM_DATASET:-true}
+USE_CUSTOM_DATASET=${USE_CUSTOM_DATASET:-false}
 
 # Custom prompts (only used when USE_CUSTOM_DATASET=true)
 # These can be overridden by environment variables
-CUSTOM_SYSTEM_PROMPT=${CUSTOM_SYSTEM_PROMPT:-"You are a helpful assistant. You FIRST think about the reasoning process as an internal monologue and then provide the final answer. The reasoning process MUST BE enclosed within <think> </think> tags."}
-#CUSTOM_SYSTEM_PROMPT=${CUSTOM_SYSTEM_PROMPT:-"You are a helpful assistant. "}
+#CUSTOM_SYSTEM_PROMPT=${CUSTOM_SYSTEM_PROMPT:-"You are a helpful assistant. For each response, you MUST follow this two-step process\n\n1. FIRST: Write your reasoning and analysis within <think> </think> tags.\n2. THEN: Provide a complete, well-explained answer outside the tags.\n\nThe content outside the <think> tags should be a full response to the user, not just a brief final result. Explain your conclusion clearly before presenting any final answer or output."}
+ CUSTOM_SYSTEM_PROMPT=${CUSTOM_SYSTEM_PROMPT:-"You are a helpful assistant. You FIRST think about the reasoning process as an internal monologue and then provide the final answer. The reasoning process MUST BE enclosed within <think> </think> tags."}
+# CUSTOM_SYSTEM_PROMPT=${CUSTOM_SYSTEM_PROMPT:-"You are a helpful assistant. "}
 CUSTOM_USER_PROMPT_TEMPLATE=${CUSTOM_USER_PROMPT_TEMPLATE:-"{content}"}
 
 ALGO="plain_rlvr_grpo"
@@ -44,7 +45,7 @@ max_response_length=13312
 # Expand wildcards and create Hydra list format [file1,file2,...]
 TRAIN_FILES="[$(ls $DATA_DIR/osv5m_train_chunk_*.parquet $DATA_DIR/geochain_test_chunk_*.parquet $DATA_DIR/gaea_train_chunk_*.parquet 2>/dev/null | tr '\n' ',' | sed 's/,$//')]"
 #TRAIN_FILES="[$(ls $DATA_DIR/osv5m_train_chunk_000{0..5}.parquet $DATA_DIR/geochain_test_chunk_000{0..5}.parquet $DATA_DIR/gaea_train_chunk_000{0..5}.parquet 2>/dev/null | tr '\n' ',' | sed 's/,$//')]"
-VAL_FILES="[$DATA_DIR/geochain_mini_test_chunk_0000.parquet,$DATA_DIR/gaea_bench_chunk_0000.parquet]"
+VAL_FILES="[$DATA_DIR/geochain_mini_test_chunk_0000.parquet,$DATA_DIR/gaea_bench_chunk_0000.parquet,$DATA_DIR/yfcc4k_train_chunk_0000.parquet,$DATA_DIR/im2gps3k_train_chunk_0000.parquet]"
 # ,$DATA_DIR/yfcc4k_train_chunk_0000.parquet,$DATA_DIR/im2gps3k_train_chunk_0000.parquet
 
 # Build custom dataset arguments as array
@@ -81,7 +82,7 @@ ray job submit --no-wait \
     custom_reward_function.name=$OBJECT \
     data.train_files="$TRAIN_FILES" \
     data.val_files="$VAL_FILES" \
-    data.train_batch_size=2048 \
+    data.train_batch_size=1024 \
     data.val_batch_size=4096 \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
@@ -95,8 +96,8 @@ ray job submit --no-wait \
     actor_rollout_ref.actor.optim.lr=2e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.use_fused_kernels=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=2048 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=32 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=1024 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.kl_loss_coef=0.01 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
@@ -105,7 +106,7 @@ ray job submit --no-wait \
     actor_rollout_ref.actor.use_torch_compile=False \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
     actor_rollout_ref.rollout.name=$ENGINE \
     +actor_rollout_ref.rollout.engine_kwargs.vllm.disable_mm_preprocessor_cache=True \
@@ -113,8 +114,8 @@ ray job submit --no-wait \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     actor_rollout_ref.rollout.enforce_eager=True \
     actor_rollout_ref.rollout.free_cache_engine=True \
-    actor_rollout_ref.rollout.n=8 \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
+    actor_rollout_ref.rollout.n=4 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
     reward_model.launch_reward_fn_async=True \

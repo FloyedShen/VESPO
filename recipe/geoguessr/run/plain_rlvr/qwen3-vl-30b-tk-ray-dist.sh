@@ -3,7 +3,7 @@ set -x
 
 # swanlab resume
 export SWANLAB_RESUME=must
-export SWANLAB_RUN_ID=ceuxnj34dtox135owapph
+export SWANLAB_RUN_ID=bu0pxeohf3pa27whrmqag
 
 export NCCL_TIMEOUT=3600
 export NCCL_ASYNC_ERROR_HANDLING=1
@@ -117,7 +117,7 @@ ray job submit --no-wait \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     actor_rollout_ref.rollout.enforce_eager=True \
     actor_rollout_ref.rollout.free_cache_engine=True \
-    actor_rollout_ref.rollout.n=8 \
+    actor_rollout_ref.rollout.n=4 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \

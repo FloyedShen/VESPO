@@ -16,6 +16,21 @@ python generate_data_parallel.py \
       --print_sample
 
 python generate_data_parallel.py \
+      --model_theta Qwen/Qwen3-0.6B-Base \
+      --model_t Qwen/Qwen3-4B-Instruct-2507 \
+      --dataset agentica-org/DeepScaleR-Preview-Dataset \
+      --output ./data/deepscaler_q4b-it_q06bb/kl_symmetry.parquet \
+      --output_format parquet \
+      --strategy data_parallel \
+      --num_gpus 8 \
+      --batch_size_per_gpu 128 \
+      --max_new_tokens 4096 \
+      --alpha_method kl_symmetry \
+      --save_diagnostics \
+      --dtype bfloat16 \
+      --print_sample
+
+python generate_data_parallel.py \
       --model_theta Qwen/Qwen3-4B-Base \
       --model_t Qwen/Qwen3-14B \
       --dataset agentica-org/DeepScaleR-Preview-Dataset \

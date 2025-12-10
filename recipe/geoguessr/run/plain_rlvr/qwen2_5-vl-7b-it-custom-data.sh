@@ -2,6 +2,9 @@
 set -x
 ENGINE=${1:-vllm}
 
+export SWANLAB_RESUME=must
+export SWANLAB_RUN_ID=yhahlqpql1qwpnj75v6vo
+
 # directory
 PROJECT_DIR=${PROJECT_DIR:-$(pwd)}
 DATA_DIR=${GEOGUESSR_DIR}/verl_data/plain_rlvr
@@ -25,8 +28,8 @@ MODEL="qwen2_5_vl_7b-it-tk-custom_rm"
 PROJECT_NAME="verl_grpo_geoguessr"
 EXP_NAME="${ALGO}_${OBJECT}_${DATASET}_${MODEL}_${ENGINE}"
 
-max_prompt_length=3072
-max_response_length=4096
+max_prompt_length=4096
+max_response_length=3072
 
 # Expand wildcards and create Hydra list format [file1,file2,...]
 TRAIN_FILES="[$(ls $DATA_DIR/osv5m_train_chunk_*.parquet $DATA_DIR/geochain_test_chunk_*.parquet $DATA_DIR/gaea_train_chunk_*.parquet 2>/dev/null | tr '\n' ',' | sed 's/,$//')]"
@@ -86,7 +89,7 @@ python3 -m verl.trainer.main_ppo \
     +actor_rollout_ref.rollout.engine_kwargs.vllm.disable_mm_preprocessor_cache=True \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
-    actor_rollout_ref.rollout.enforce_eager=False \
+    actor_rollout_ref.rollout.enforce_eager=True \
     actor_rollout_ref.rollout.free_cache_engine=True \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
@@ -100,7 +103,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name=$EXP_NAME \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=20 \
+    trainer.save_freq=50 \
     trainer.test_freq=10 \
     trainer.total_epochs=1 \
     "${CUSTOM_DATASET_ARGS[@]}" \

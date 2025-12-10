@@ -1,5 +1,19 @@
 working_dir: ./
-excludes: ["/.git/"]
+excludes:
+  - "/.git/"
+  - "/checkpoints/"
+  - "/ckpt_hf/"
+  - "/swanlog/"
+  - "/outputs/"
+  - "/tensorboard_log/"
+  - "/.venv/"
+  - "/logs/"
+  - "/log/"
+  - "**/*.ckpt"
+  - "**/*.pt"
+  - "**/*.parquet"
+  - "/validation_outputs"
+  - "**/recipe/optimal_sampling/"
 env_vars:
   TORCH_NCCL_AVOID_RECORD_STREAMS: "1"
   CUDA_DEVICE_MAX_CONNECTIONS: "1"

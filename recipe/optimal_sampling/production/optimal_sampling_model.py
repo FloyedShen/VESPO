@@ -1222,12 +1222,12 @@ class OptimalSamplingModel:
             # π_t 使用 input_ids_t（可能不同）
             if not self.same_model:
                 # 🔍 Debug: 检查Prefill阶段的input
-                print(f"[DEBUG Prefill] input_ids_t shape: {input_ids_t.shape}")
-                print(f"[DEBUG Prefill] attention_mask_t shape: {attention_mask_t.shape}")
-                for b in range(batch_size):
-                    print(f"[DEBUG Prefill, batch={b}] input_ids_t length: {input_ids_t[b].shape[0]}")
-                    print(f"[DEBUG Prefill, batch={b}] Last 10 tokens: {input_ids_t[b, -10:].tolist()}")
-                    print(f"[DEBUG Prefill, batch={b}] Decoded last 30 chars: {repr(self.tokenizer_t.decode(input_ids_t[b])[-30:])}")
+                # print(f"[DEBUG Prefill] input_ids_t shape: {input_ids_t.shape}")
+                # print(f"[DEBUG Prefill] attention_mask_t shape: {attention_mask_t.shape}")
+                # for b in range(batch_size):
+                #     print(f"[DEBUG Prefill, batch={b}] input_ids_t length: {input_ids_t[b].shape[0]}")
+                #     print(f"[DEBUG Prefill, batch={b}] Last 10 tokens: {input_ids_t[b, -10:].tolist()}")
+                #     print(f"[DEBUG Prefill, batch={b}] Decoded last 30 chars: {repr(self.tokenizer_t.decode(input_ids_t[b])[-30:])}")
 
                 outputs_t = self.model_t(
                     input_ids=input_ids_t,
@@ -1238,11 +1238,11 @@ class OptimalSamplingModel:
                 logits_t = outputs_t.logits[:, -1, :]
 
                 # 🔍 Debug: 检查Prefill阶段的output logits
-                print(f"[DEBUG Prefill] logits_t shape after Prefill: {logits_t.shape}")
-                for b in range(batch_size):
-                    top_3_logits, top_3_idx = torch.topk(logits_t[b], k=3)
-                    print(f"[DEBUG Prefill, batch={b}] Top-3 logits: {top_3_logits.tolist()}")
-                    print(f"[DEBUG Prefill, batch={b}] Top-3 token_ids: {top_3_idx.tolist()}")
+                # print(f"[DEBUG Prefill] logits_t shape after Prefill: {logits_t.shape}")
+                # for b in range(batch_size):
+                #     top_3_logits, top_3_idx = torch.topk(logits_t[b], k=3)
+                #     print(f"[DEBUG Prefill, batch={b}] Top-3 logits: {top_3_logits.tolist()}")
+                #     print(f"[DEBUG Prefill, batch={b}] Top-3 token_ids: {top_3_idx.tolist()}")
             else:
                 past_key_values_t = None
                 logits_t = logits_theta
@@ -1253,15 +1253,15 @@ class OptimalSamplingModel:
                 probs_theta, probs_t = self._align_logits(logits_theta, logits_t, temperature)
 
                 # 🔍 Debug: 检查logits是否正常
-                if step == 0:
-                    print(f"[DEBUG step={step}] logits_t shape: {logits_t.shape}")
-                    print(f"[DEBUG step={step}] probs_t shape: {probs_t.shape}")
-                    for b in range(batch_size):
-                        top_5_probs, top_5_idx = torch.topk(probs_t[b], k=5)
-                        print(f"[DEBUG step={step}, batch={b}] Top-5 tokens from π_t:")
-                        for rank, (prob, idx) in enumerate(zip(top_5_probs, top_5_idx), 1):
-                            token_text = self.tokenizer_t.decode([idx.item()])
-                            print(f"    {rank}. token_id={idx.item()}, prob={prob.item():.4f}, text={repr(token_text)}")
+                # if step == 0:
+                #     # print(f"[DEBUG step={step}] logits_t shape: {logits_t.shape}")
+                #     # print(f"[DEBUG step={step}] probs_t shape: {probs_t.shape}")
+                #     for b in range(batch_size):
+                #         top_5_probs, top_5_idx = torch.topk(probs_t[b], k=5)
+                #         # print(f"[DEBUG step={step}, batch={b}] Top-5 tokens from π_t:")
+                #         for rank, (prob, idx) in enumerate(zip(top_5_probs, top_5_idx), 1):
+                #             token_text = self.tokenizer_t.decode([idx.item()])
+                #             print(f"    {rank}. token_id={idx.item()}, prob={prob.item():.4f}, text={repr(token_text)}")
 
                 # ✅ 强制第一个token使用π_t
                 if step == 0 and self.force_target_for_first_token:
@@ -1271,10 +1271,10 @@ class OptimalSamplingModel:
                     alpha = torch.ones(batch_size, device=probs_theta.device)
 
                     # 🔍 Debug: 检查第一个token的分布
-                    if step == 0:
-                        for b in range(batch_size):
-                            top_prob, top_idx = torch.topk(q_star[b], k=1)
-                            print(f"[DEBUG step={step}, batch={b}] First token forcing: top-1 token_id={top_idx.item()}, prob={top_prob.item():.4f}")
+                    # if step == 0:
+                    #     for b in range(batch_size):
+                    #         top_prob, top_idx = torch.topk(q_star[b], k=1)
+                    #         print(f"[DEBUG step={step}, batch={b}] First token forcing: top-1 token_id={top_idx.item()}, prob={top_prob.item():.4f}")
                 else:
                     # 后续token正常计算alpha和q*
                     # ✨ 改进：先计算alpha，再计算q*，最后施加约束
@@ -1289,8 +1289,8 @@ class OptimalSamplingModel:
                 # ✅ 修复：第一个token强制使用π_t时，跳过filtering以保持分布不变
                 if (top_p < 1.0 or top_k > 0) and not (step == 0 and self.force_target_for_first_token):
                     q_star = self._apply_sampling_filters(q_star, top_p, top_k)
-                elif step == 0:
-                    print(f"[DEBUG step={step}] Skipping filtering for first token (top_p={top_p}, top_k={top_k})")
+                # elif step == 0:
+                    # print(f"[DEBUG step={step}] Skipping filtering for first token (top_p={top_p}, top_k={top_k})")
 
                 # ✅ 采样前安全检查
                 if torch.isnan(q_star).any() or torch.isinf(q_star).any() or (q_star < 0).any():
@@ -1415,15 +1415,15 @@ class OptimalSamplingModel:
                 probs_theta, probs_t = self._align_logits(logits_theta, logits_t, temperature)
 
                 # 🔍 Debug: 检查logits是否正常
-                if step == 0:
-                    print(f"[DEBUG step={step}] logits_t shape: {logits_t.shape}")
-                    print(f"[DEBUG step={step}] probs_t shape: {probs_t.shape}")
-                    for b in range(batch_size):
-                        top_5_probs, top_5_idx = torch.topk(probs_t[b], k=5)
-                        print(f"[DEBUG step={step}, batch={b}] Top-5 tokens from π_t:")
-                        for rank, (prob, idx) in enumerate(zip(top_5_probs, top_5_idx), 1):
-                            token_text = self.tokenizer_t.decode([idx.item()])
-                            print(f"    {rank}. token_id={idx.item()}, prob={prob.item():.4f}, text={repr(token_text)}")
+                # if step == 0:
+                #     # print(f"[DEBUG step={step}] logits_t shape: {logits_t.shape}")
+                #     # print(f"[DEBUG step={step}] probs_t shape: {probs_t.shape}")
+                #     for b in range(batch_size):
+                #         top_5_probs, top_5_idx = torch.topk(probs_t[b], k=5)
+                #         # print(f"[DEBUG step={step}, batch={b}] Top-5 tokens from π_t:")
+                #         for rank, (prob, idx) in enumerate(zip(top_5_probs, top_5_idx), 1):
+                #             token_text = self.tokenizer_t.decode([idx.item()])
+                #             print(f"    {rank}. token_id={idx.item()}, prob={prob.item():.4f}, text={repr(token_text)}")
 
                 # ✅ 强制第一个token使用π_t
                 if step == 0 and self.force_target_for_first_token:
@@ -1433,10 +1433,10 @@ class OptimalSamplingModel:
                     alpha = torch.ones(batch_size, device=probs_theta.device)
 
                     # 🔍 Debug: 检查第一个token的分布
-                    if step == 0:
-                        for b in range(batch_size):
-                            top_prob, top_idx = torch.topk(q_star[b], k=1)
-                            print(f"[DEBUG step={step}, batch={b}] First token forcing: top-1 token_id={top_idx.item()}, prob={top_prob.item():.4f}")
+                    # if step == 0:
+                    #     for b in range(batch_size):
+                    #         top_prob, top_idx = torch.topk(q_star[b], k=1)
+                    #         print(f"[DEBUG step={step}, batch={b}] First token forcing: top-1 token_id={top_idx.item()}, prob={top_prob.item():.4f}")
                 else:
                     # 后续token正常计算alpha和q*
                     # ✨ 改进：先计算alpha，再计算q*，最后施加约束
@@ -1451,8 +1451,8 @@ class OptimalSamplingModel:
                 # ✅ 修复：第一个token强制使用π_t时，跳过filtering以保持分布不变
                 if (top_p < 1.0 or top_k > 0) and not (step == 0 and self.force_target_for_first_token):
                     q_star = self._apply_sampling_filters(q_star, top_p, top_k)
-                elif step == 0:
-                    print(f"[DEBUG step={step}] Skipping filtering for first token (top_p={top_p}, top_k={top_k})")
+                # elif step == 0:
+                #     print(f"[DEBUG step={step}] Skipping filtering for first token (top_p={top_p}, top_k={top_k})")
 
                 # ✅ 采样前安全检查
                 if torch.isnan(q_star).any() or torch.isinf(q_star).any() or (q_star < 0).any():
@@ -2366,10 +2366,10 @@ def create_optimal_sampling_model(
     model_theta: str,
     model_t: Optional[str] = None,
     alpha_method: str = "kl_symmetry",
-    alpha_min: float = 0.3,
+    alpha_min: float = 0.2,
     alpha_max: float = 1.0,
     constraint_to_target: bool = True,
-    target_top_k: int = 32,
+    target_top_k: int = 128,
     target_top_p: float = 0.95,
     force_target_for_special_tokens: bool = True,
     force_target_for_first_token: bool = True,
@@ -2515,7 +2515,7 @@ def create_dual_prompts(
     messages_list: List[List[Dict[str, str]]],
     tokenizer_theta,
     tokenizer_t,
-    force_nlt_in_theta: bool = True,
+    force_nlt_in_theta: bool = False,
     base_template: Optional[str] = NATURAL_LANGUAGE_TEMPLATE,
     add_generation_prompt: bool = True,
     add_think_token: bool = False,
@@ -2579,6 +2579,7 @@ def create_dual_prompts(
                 )
             else:
                 # Fallback: tokenizer 没有 chat template
+                raise NotImplementedError("Cannot find chat template in model_theta")
                 prompt_theta = _simple_template_fallback(messages, add_generation_prompt)
 
         # ========================================

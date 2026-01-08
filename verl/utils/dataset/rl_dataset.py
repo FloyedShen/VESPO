@@ -181,29 +181,55 @@ class RLHFDataset(Dataset):
     def maybe_filter_out_long_prompts(self, dataframe: datasets.Dataset = None):
         # filter out too long prompts
         if self.filter_overlong_prompts:
+            # Extract all needed attributes as local variables to avoid serializing `self`
+            # This is critical for multi-process filter (num_proc > 1) to work correctly
             tokenizer = self.tokenizer
             processor = self.processor
             prompt_key = self.prompt_key
             image_key = self.image_key
             video_key = self.video_key
+            max_prompt_length = self.max_prompt_length
+            image_patch_size = self.image_patch_size
+            apply_chat_template_kwargs = dict(self.apply_chat_template_kwargs)
+            tool_schemas = self.tool_schemas
 
             if processor is not None:
                 from verl.utils.dataset.vision_utils import process_image, process_video
 
                 def doc2len(doc) -> int:
                     try:
-                        messages = self._build_messages(doc)
-                        # pass tool schemas if available so the processor can format prompts
-                        apply_kwargs = dict(**self.apply_chat_template_kwargs)
-                        if self.tool_schemas is not None:
-                            apply_kwargs["tools"] = self.tool_schemas
+                        # Build messages without using self._build_messages to avoid referencing self
+                        # Use doc[key] instead of doc.pop(key) to avoid modifying the original data
+                        messages = doc[prompt_key]
+                        if image_key in doc or video_key in doc:
+                            # Deep copy messages to avoid modifying original data
+                            import copy
+                            messages = copy.deepcopy(messages)
+                            for message in messages:
+                                content = message["content"]
+                                content_list = []
+                                segments = re.split("(<image>|<video>)", content)
+                                segments = [item for item in segments if item != ""]
+                                for segment in segments:
+                                    if segment == "<image>":
+                                        content_list.append({"type": "image"})
+                                    elif segment == "<video>":
+                                        content_list.append({"type": "video"})
+                                    else:
+                                        content_list.append({"type": "text", "text": segment})
+                                message["content"] = content_list
 
-                        raw_prompt = self.processor.apply_chat_template(
+                        # pass tool schemas if available so the processor can format prompts
+                        apply_kwargs = dict(**apply_chat_template_kwargs)
+                        if tool_schemas is not None:
+                            apply_kwargs["tools"] = tool_schemas
+
+                        raw_prompt = processor.apply_chat_template(
                             messages, add_generation_prompt=True, tokenize=False, **apply_kwargs
                         )
                         if image_key in doc and doc[image_key]:
                             images = [
-                                process_image(image, image_patch_size=self.image_patch_size) for image in doc[image_key]
+                                process_image(image, image_patch_size=image_patch_size) for image in doc[image_key]
                             ]
                         else:
                             images = None
@@ -212,7 +238,7 @@ class RLHFDataset(Dataset):
                             videos, video_metadata = zip(
                                 *[
                                     process_video(
-                                        video, image_patch_size=self.image_patch_size, return_video_metadata=True
+                                        video, image_patch_size=image_patch_size, return_video_metadata=True
                                     )
                                     for video in doc[video_key]
                                 ],
@@ -233,15 +259,15 @@ class RLHFDataset(Dataset):
                     except Exception:
                         print("Error processing one of the samples, skipping...")
                         traceback.print_exc()
-                        return self.max_prompt_length + 1
+                        return max_prompt_length + 1
 
             else:
 
                 def doc2len(doc) -> int:
                     try:
-                        apply_kwargs = dict(**self.apply_chat_template_kwargs)
-                        if self.tool_schemas is not None:
-                            apply_kwargs["tools"] = self.tool_schemas
+                        apply_kwargs = dict(**apply_chat_template_kwargs)
+                        if tool_schemas is not None:
+                            apply_kwargs["tools"] = tool_schemas
 
                         return len(
                             tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True, **apply_kwargs)
@@ -249,12 +275,12 @@ class RLHFDataset(Dataset):
                     except Exception:
                         print("Error processing one of the samples, skipping...")
                         traceback.print_exc()
-                        return self.max_prompt_length + 1
+                        return max_prompt_length + 1
 
             dataframe = dataframe.filter(
-                lambda doc: doc2len(doc) <= self.max_prompt_length,
+                lambda doc: doc2len(doc) <= max_prompt_length,
                 num_proc=self.num_workers,
-                desc=f"Filtering prompts longer than {self.max_prompt_length} tokens",
+                desc=f"Filtering prompts longer than {max_prompt_length} tokens",
             )
 
             print(f"filter dataset len: {len(dataframe)}")

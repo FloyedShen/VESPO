@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+from typing import Any
 
 
 def resolve_config_path(config_path: str) -> str:
@@ -97,25 +98,11 @@ def add_generation_prompt_for_gpt_oss(message_content: str) -> str:
     return message_content + "<|start|>assistant"
 
 
-def format_qwen_tool_response_manually(tool_response: str, tool_call_name: str) -> str:
-    """Format tool response for Qwen model with custom template.
-    Args:
-        tool_response: Tool response string
-        tool_call_name: Name of the tool that was called (not used in Qwen format)
-
-    Returns:
-        Formatted tool response string in Qwen format
-    """
-    return f"<|im_start|>user\n<tool_response>\n{tool_response}\n</tool_response><|im_end|>\n"
-
-
-def add_generation_prompt_for_qwen(message_content: str) -> str:
-    """Add generation prompt for Qwen model.
-    Args:
-        message_content: Message content string
-
-    Returns:
-        Message content string with generation prompt
-    """
-    return message_content + "<|im_start|>assistant\n"
-
+def build_gpt_oss_tool_response_text(messages: list[dict[str, Any]], tool_call_names: list[str]) -> str:
+    """Build gpt-oss tool response text (manual formatting + generation prompt)."""
+    tool_response_texts: list[str] = []
+    for i, tool_msg in enumerate(messages):
+        actual_tool_name = tool_call_names[i]
+        formatted = format_gpt_oss_tool_response_manually(tool_msg["content"], actual_tool_name)
+        tool_response_texts.append(formatted)
+    return add_generation_prompt_for_gpt_oss("".join(tool_response_texts))

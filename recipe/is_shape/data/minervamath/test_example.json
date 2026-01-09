@@ -1,0 +1,19 @@
+{
+  "id": "minervamath_0",
+  "data_source": "math-ai/minervamath",
+  "prompt": [
+    {
+      "content": "Each of the two Magellan telescopes has a diameter of $6.5 \\mathrm{~m}$. In one configuration the effective focal length is $72 \\mathrm{~m}$. Find the diameter of the image of a planet (in $\\mathrm{cm}$ ) at this focus if the angular diameter of the planet at the time of the observation is $45^{\\prime \\prime}$. Let's think step by step and output the final answer within \\boxed{}.",
+      "role": "user"
+    }
+  ],
+  "ability": "math",
+  "reward_model": {
+    "ground_truth": "1.6",
+    "style": "rule"
+  },
+  "extra_info": {
+    "index": 0,
+    "split": "test"
+  }
+}

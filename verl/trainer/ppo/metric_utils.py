@@ -429,14 +429,23 @@ def process_validation_metrics(
         uid = sample_uids[sample_idx]
         var2vals = data_src2uid2var2vals[data_source][uid]
         for var_name, var_vals in infos_dict.items():
-            var2vals[var_name].append(var_vals[sample_idx])
+            val = var_vals[sample_idx]
+            # Expand dict values: each key becomes a separate variable
+            if isinstance(val, dict):
+                for key, sub_val in val.items():
+                    # Only include numeric values from dict
+                    if isinstance(sub_val, (int, float, bool)) and not isinstance(sub_val, str):
+                        var2vals[f"{var_name}/{key}"].append(sub_val)
+            else:
+                var2vals[var_name].append(val)
 
     # Calculate metrics for each group
     data_src2uid2var2metric = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
     for data_source, uid2var2vals in data_src2uid2var2vals.items():
         for uid, var2vals in uid2var2vals.items():
             for var_name, var_vals in var2vals.items():
-                if isinstance(var_vals[0], str):
+                # Skip non-numeric types (str, list, etc.)
+                if len(var_vals) == 0 or isinstance(var_vals[0], (str, list)):
                     continue
 
                 metric = {}

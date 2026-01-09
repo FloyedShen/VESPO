@@ -1,0 +1,19 @@
+{
+  "id": "aime25_0",
+  "data_source": "math-ai/aime25",
+  "prompt": [
+    {
+      "content": "Find the sum of all integer bases $b>9$ for which $17_b$ is a divisor of $97_b.$ Let's think step by step and output the final answer within \\boxed{}.",
+      "role": "user"
+    }
+  ],
+  "ability": "math",
+  "reward_model": {
+    "ground_truth": "70",
+    "style": "rule"
+  },
+  "extra_info": {
+    "index": 0,
+    "split": "test"
+  }
+}

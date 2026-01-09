@@ -113,54 +113,49 @@ def init_visual_execution_pool(
 
 
 class ImageZoomInTool(BaseTool):
-    """A tool for zooming in on an image by cropping it based on a bounding box.
+    """Tool for zooming in on specific regions of an image by cropping based on bounding box.
 
-    This tool provides a zoom-in functionality by cropping a region from an image,
-    with rate limiting and concurrent execution support through Ray.
-
-    Methods:
-        get_openai_tool_schema: Return the tool schema in OpenAI format
-        create: Create a tool instance for a trajectory
-        execute: Execute the zoom-in operation
-        calc_reward: Calculate the reward with respect to tool state
-        release: Release the tool instance
+    Bounding box coordinates are specified in [0, 1000] range relative to image dimensions.
+    The tool automatically converts these to pixel coordinates based on actual image size.
     """
 
     MIN_DIMENSION = 28
 
-    def __init__(self, config: dict, tool_schema: OpenAIFunctionToolSchema):
-        """
-        _tool_schema = OpenAIFunctionToolSchema.model_validate({
+    @staticmethod
+    def get_default_schema() -> OpenAIFunctionToolSchema:
+        """Get default OpenAI tool schema for image zoom-in."""
+        return OpenAIFunctionToolSchema.model_validate({
             "type": "function",
             "function": {
                 "name": "image_zoom_in_tool",
-                "description": (
-                    "Zoom in on a specific region of an image by cropping it based on a bounding box (bbox) and an "
-                    "optional object label."
-                ),
+                "description": "Zoom in on a specific region of an image by cropping it based on a bounding box (bbox) and an optional object label",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "bbox_2d": {
                             "type": "array",
-                            "items":{"type":"number"},
-                            "minItems":4,
-                            "maxItems":4,
-                            "description": (
-                                "The bounding box of the region to zoom in, as [x1, y1, x2, y2], where (x1, y1) is "
-                                "the top-left corner and (x2, y2) is the bottom-right corner."
-                            ),
+                            "items": {"type": "number"},
+                            "minItems": 4,
+                            "maxItems": 4,
+                            "description": "The bounding box of the region to zoom in, as [x1, y1, x2, y2] in range [0, 1000] relative to image dimensions, where (x1, y1) is the top-left corner and (x2, y2) is the bottom-right corner"
                         },
                         "label": {
                             "type": "string",
-                            "description": "The name or label of the object in the specified bounding box (optional).",
+                            "description": "The name or label of the object in the specified bounding box"
                         },
+                        "img_idx": {
+                            "type": "integer",
+                            "description": "The index of the image to zoom in on (0-based). 0 refers to the original input image, 1+ refers to previous tool results"
+                        }
                     },
-                    "required": ["bbox_2d"],
-                },
+                    "required": ["bbox_2d", "label", "img_idx"]
+                }
             }
         })
-        """
+
+    def __init__(self, config: dict, tool_schema: OpenAIFunctionToolSchema = None):
+        if tool_schema is None:
+            tool_schema = self.get_default_schema()
         super().__init__(config, tool_schema)
         self._instance_dict = {}
 
@@ -303,15 +298,16 @@ class ImageZoomInTool(BaseTool):
         """
         Creates a new instance for image zoom-in tool.
 
-        This method initializes a new session for an image, which can then be used
-        for operations like zooming. It fetches the image from various sources
-        and stores it internally.
+        This method initializes a new session for images, which can then be used
+        for operations like zooming. It fetches images from various sources
+        and stores them internally.
 
         Args:
             instance_id: An optional unique identifier for the instance. If not
                 provided, a new UUID will be generated.
-            **kwargs: Should contain 'image' key with image data, or 'create_kwargs'
-                containing {'image': image_data}. Image can be one of the following:
+            **kwargs: Should contain 'images' key with a list of image data, or 'create_kwargs'
+                containing {'images': [image_data, ...]}.
+                Each image can be one of the following:
                 - A PIL.Image.Image object.
                 - A string containing an HTTP or HTTPS URL.
                 - A string containing a local file path.
@@ -329,14 +325,23 @@ class ImageZoomInTool(BaseTool):
         if create_kwargs:
             kwargs.update(create_kwargs)
 
-        # Get image from kwargs
-        image = kwargs.get("image")
-        if image is None:
-            raise ValueError("Missing required 'image' parameter in kwargs")
+        # Get images from kwargs (now expects a list)
+        images = kwargs.get("images")
+        if images is None:
+            raise ValueError("Missing required 'images' parameter in kwargs")
 
-        img = fetch_image({"image": image})
+        # Ensure images is a list
+        if not isinstance(images, list):
+            images = [images]
+
+        # Fetch all images
+        fetched_images = []
+        for img in images:
+            fetched_img = fetch_image({"image": img})
+            fetched_images.append(fetched_img)
+
         self._instance_dict[instance_id] = {
-            "image": img,
+            "images": fetched_images,  # Store list of images
             "response": "",
             "reward": 0.0,
         }
@@ -345,6 +350,7 @@ class ImageZoomInTool(BaseTool):
     async def execute(self, instance_id: str, parameters: dict[str, Any], **kwargs) -> tuple[ToolResponse, float, dict]:
         bbox_2d = parameters.get("bbox_2d")
         label = parameters.get("label", "")
+        img_idx = parameters.get("img_idx", 0)  # Default to first image if not specified
 
         if not bbox_2d or len(bbox_2d) != 4:
             return (
@@ -354,8 +360,29 @@ class ImageZoomInTool(BaseTool):
             )
 
         instance_data = self._instance_dict[instance_id]
-        image = instance_data["image"]
+        images = instance_data["images"]
+
+        # Validate img_idx
+        if not isinstance(img_idx, int):
+            return (
+                ToolResponse(text=f"Error: img_idx must be an integer, got {type(img_idx).__name__}."),
+                -0.05,
+                {"success": False},
+            )
+
+        if img_idx < 0 or img_idx >= len(images):
+            return (
+                ToolResponse(text=f"Error: img_idx {img_idx} is out of range. Valid range: 0 to {len(images)-1}."),
+                -0.05,
+                {"success": False, "img_idx": img_idx, "available_images": len(images)},
+            )
+
+        # Select the image based on img_idx
+        image = images[img_idx]
         image_width, image_height = image.size
+
+        for i in range(4):  # qwen3-vl outputs bbox in [0,1000] range
+            bbox_2d[i] = bbox_2d[i] / 1000 * (image_width if i % 2 == 0 else image_height)
 
         try:
             resized_bbox = self._maybe_resize_bbox(bbox_2d, image_width=image_width, image_height=image_height)
@@ -366,17 +393,18 @@ class ImageZoomInTool(BaseTool):
                     f"the minimum size of {self.MIN_DIMENSION}x{self.MIN_DIMENSION}."
                 )
                 logger.warning(f"Tool execution failed: {error_msg}")
-                return ToolResponse(text=error_msg), -0.05, {"success": False}
+                return ToolResponse(text=error_msg), -0.05, {"success": False, "img_idx": img_idx}
 
             cropped_image = image.crop(resized_bbox)
-            logger.info(f"Cropped image size: {cropped_image.size}")
+            logger.info(f"Cropped image (img_idx={img_idx}) size: {cropped_image.size}")
         except Exception as e:
-            logger.error(f"Error processing image zoom-in: {e}")
-            return ToolResponse(text=f"Error processing image zoom-in: {e}"), -0.05, {"success": False}
+            logger.error(f"Error processing image zoom-in (img_idx={img_idx}): {e}")
+            return ToolResponse(text=f"Error processing image zoom-in: {e}"), -0.05, {"success": False, "img_idx": img_idx}
 
-        response_text = f"Zoomed in on the image to the region {bbox_2d}."
-        if label:
-            response_text = f"Zoomed in on the image to the region {bbox_2d} with label {label}."
+        # response_text = f"Zoomed in on image_{img_idx} to the region {bbox_2d}."
+        # if label:
+        #     response_text = f"Zoomed in on image_{img_idx} to the region {bbox_2d} with label {label}."
+        response_text = ""
 
         return (
             ToolResponse(
@@ -384,7 +412,7 @@ class ImageZoomInTool(BaseTool):
                 text=response_text,
             ),
             0.0,
-            {"success": True},
+            {"success": True, "img_idx": img_idx},
         )
 
     async def release(self, instance_id: str, **kwargs) -> None:

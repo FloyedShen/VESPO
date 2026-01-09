@@ -159,3 +159,41 @@ class GptOssToolParser(ToolParser):
         content = regex.sub(self.tool_call_pattern, "", text)
 
         return content, function_calls
+
+
+@ToolParser.register("qwen")
+class QwenToolParser(ToolParser):
+    """
+    Tool parser for Qwen models with custom tool calling format.
+    Uses <tool_call> and </tool_call> tags like Hermes, but with Qwen-specific formatting.
+    """
+
+    def __init__(self, tokenizer) -> None:
+        super().__init__(tokenizer)
+
+        self.tool_call_start_token: str = "<tool_call>"
+        self.tool_call_end_token: str = "</tool_call>"
+        self.tool_call_regex = regex.compile(r"<tool_call>(.*?)</tool_call>", regex.DOTALL)
+
+    @rollout_trace_op
+    async def extract_tool_calls(self, responses_ids: list[int]) -> tuple[str, list[FunctionCall]]:
+        loop = asyncio.get_running_loop()
+        text = await loop.run_in_executor(None, self.tokenizer.decode, responses_ids)
+        if self.tool_call_start_token not in text or self.tool_call_end_token not in text:
+            return text, []
+
+        matches = self.tool_call_regex.findall(text)
+        function_calls = []
+        for match in matches:
+            try:
+                function_call = json.loads(match)
+                name, arguments = function_call["name"], function_call["arguments"]
+                function_calls.append(FunctionCall(name=name, arguments=json.dumps(arguments, ensure_ascii=False)))
+            except Exception as e:
+                logger.error(f"Failed to decode tool call: {e}")
+
+        # remaining text exclude tool call tokens
+        content = self.tool_call_regex.sub("", text)
+
+        return content, function_calls
+

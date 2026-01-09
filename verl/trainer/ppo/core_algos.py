@@ -989,10 +989,50 @@ def compute_policy_loss_vanilla(
         loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode, **config.global_batch_info
     )
 
+    # Compute IS ratio statistics (for comparison with IS Reshape)
+    with torch.no_grad():
+        # Original IS ratio: π_θ / π_old (before clipping)
+        is_ratio_original = verl_F.masked_mean(ratio, response_mask)
+
+        # Check if clipping is effectively disabled (clip ratios >= 10000)
+        # This handles the "noclip" scenario where clip_ratio=100000
+        clipping_disabled = (cliprange_low >= 10000.0 or cliprange_high >= 10000.0 or clip_ratio_c >= 10000.0)
+
+        if clipping_disabled:
+            # No clipping: ratio_used equals ratio_original
+            ratio_used = ratio
+        else:
+            # Clipped ratio
+            ratio_clipped = torch.clamp(ratio, 1 - cliprange_low, 1 + cliprange_high)
+
+            # Compute effective ratio used in loss (considering both standard clip and dual-clip)
+            # For advantages >= 0: use max(ratio, clipped_ratio)
+            # For advantages < 0: use min(clip_ratio_c, max(ratio, clipped_ratio))
+            ratio_after_standard_clip = torch.where(
+                torch.gt(pg_losses2, pg_losses1),
+                ratio_clipped,
+                ratio
+            )
+
+            # Apply dual-clip for negative advantages
+            ratio_used = torch.where(
+                advantages < 0,
+                torch.where(
+                    torch.gt(clip_pg_losses1, pg_losses3),
+                    torch.full_like(ratio, clip_ratio_c),
+                    ratio_after_standard_clip
+                ),
+                ratio_after_standard_clip
+            )
+
+        is_ratio_used = verl_F.masked_mean(ratio_used, response_mask)
+
     pg_metrics = {
         "actor/pg_clipfrac": pg_clipfrac.detach().item(),
         "actor/ppo_kl": ppo_kl.detach().item(),
         "actor/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
+        "actor/is_ratio_original": is_ratio_original.detach().item(),
+        "actor/is_ratio_used": is_ratio_used.detach().item(),
     }
     return pg_loss, pg_metrics
 

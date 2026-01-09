@@ -1,0 +1,106 @@
+# GeoGuessr PPO Training with Tool Support
+# Optimized for Qwen3-VL models
+
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+# ============================================================================
+# Data Configuration
+# ============================================================================
+data:
+  max_prompt_length: 4096
+  max_response_length: 8192
+  train_batch_size: 128
+  val_batch_size: 128
+
+  return_raw_chat: True
+  return_multi_modal_inputs: False
+
+  custom_cls:
+    path: "recipe/geoguessr/geoguessr_dataset.py"
+    name: GeoguessrToolDataset
+
+  # System prompt will be overridden by script
+  custom_system_prompt: ""
+
+  # Data files will be set by script
+  train_files: []
+  val_files: []
+
+  shuffle: True
+  seed: 42
+
+# ============================================================================
+# Model & Rollout Configuration
+# ============================================================================
+actor_rollout_ref:
+  hybrid_engine: True
+
+  model:
+    path: ""  # Set by script
+
+  rollout:
+    name: vllm  # vllm or sglang
+
+    # Generation parameters
+    temperature: 0.7
+    top_p: 0.9
+    top_k: 50
+    prompt_length: 4096
+    response_length: 8192
+
+    # Multi-turn tool calling configuration
+    multi_turn:
+      enable: True
+      max_assistant_turns: 5
+      max_user_turns: 10
+      max_parallel_calls: 1
+      max_tool_response_length: 1024
+      tool_response_truncate_side: "middle"
+      tool_config_path: "recipe/geoguessr/config/geoguessr_service_tools_config.yaml"
+      format: "qwen"
+
+  actor:
+    strategy: fsdp
+    ppo_mini_batch_size: 128
+
+# ============================================================================
+# Reward Configuration
+# ============================================================================
+custom_reward_function:
+  path: "recipe/geoguessr/reward_function.py"
+  name: geoguessr_reward_function
+
+reward_model:
+  enable: False
+
+# ============================================================================
+# Algorithm Configuration (GRPO/PPO)
+# ============================================================================
+algorithm:
+  gamma: 1.0
+  lam: 0.95
+  adv_estimator: gae
+  normalize_advantage: True
+
+# ============================================================================
+# Trainer Configuration
+# ============================================================================
+trainer:
+  total_epochs: 1
+  n_gpus_per_node: 8
+  nnodes: 1
+
+  default_local_dir: "./checkpoints"
+
+  project_name: "geoguessr_ppo_tools"
+  experiment_name: "qwen3vl_tools"
+  logger: ["console", "wandb", "swanlab"]
+
+  save_freq: 50
+  test_freq: 10

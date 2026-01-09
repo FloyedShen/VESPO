@@ -1,0 +1,104 @@
+{
+  "prompt": [
+    {
+      "content": "Write a 300+ word summary of the wikipedia page \"https://en.wikipedia.org/wiki/Raymond_III,_Count_of_Tripoli\". Do not use any commas and highlight at least 3 sections that has titles in markdown format, for example *highlighted section part 1*, *highlighted section part 2*, *highlighted section part 3*.",
+      "role": "user"
+    }
+  ],
+  "id": "ifeval_0",
+  "data_source": "google/IFEval",
+  "ability": "instruction_following",
+  "reward_model": {
+    "instruction_id_list": [
+      "punctuation:no_comma",
+      "detectable_format:number_highlighted_sections",
+      "length_constraints:number_words"
+    ],
+    "kwargs": [
+      {
+        "capital_frequency": null,
+        "capital_relation": null,
+        "end_phrase": null,
+        "first_word": null,
+        "forbidden_words": null,
+        "frequency": null,
+        "keyword": null,
+        "keywords": null,
+        "language": null,
+        "let_frequency": null,
+        "let_relation": null,
+        "letter": null,
+        "nth_paragraph": null,
+        "num_bullets": null,
+        "num_highlights": null,
+        "num_paragraphs": null,
+        "num_placeholders": null,
+        "num_sections": null,
+        "num_sentences": null,
+        "num_words": null,
+        "postscript_marker": null,
+        "prompt_to_repeat": null,
+        "relation": null,
+        "section_spliter": null
+      },
+      {
+        "capital_frequency": null,
+        "capital_relation": null,
+        "end_phrase": null,
+        "first_word": null,
+        "forbidden_words": null,
+        "frequency": null,
+        "keyword": null,
+        "keywords": null,
+        "language": null,
+        "let_frequency": null,
+        "let_relation": null,
+        "letter": null,
+        "nth_paragraph": null,
+        "num_bullets": null,
+        "num_highlights": 3,
+        "num_paragraphs": null,
+        "num_placeholders": null,
+        "num_sections": null,
+        "num_sentences": null,
+        "num_words": null,
+        "postscript_marker": null,
+        "prompt_to_repeat": null,
+        "relation": null,
+        "section_spliter": null
+      },
+      {
+        "capital_frequency": null,
+        "capital_relation": null,
+        "end_phrase": null,
+        "first_word": null,
+        "forbidden_words": null,
+        "frequency": null,
+        "keyword": null,
+        "keywords": null,
+        "language": null,
+        "let_frequency": null,
+        "let_relation": null,
+        "letter": null,
+        "nth_paragraph": null,
+        "num_bullets": null,
+        "num_highlights": null,
+        "num_paragraphs": null,
+        "num_placeholders": null,
+        "num_sections": null,
+        "num_sentences": null,
+        "num_words": 300,
+        "postscript_marker": null,
+        "prompt_to_repeat": null,
+        "relation": "at least",
+        "section_spliter": null
+      }
+    ],
+    "style": "ifeval"
+  },
+  "extra_info": {
+    "index": 0,
+    "original_key": 1000,
+    "split": "test"
+  }
+}

@@ -301,7 +301,6 @@ def calculate_geoguessr_score(distance_km: float) -> float:
     """
     # Official GeoGuessr parameters (empirically derived)
     decay_coefficient = 1492.7  # Distance at which score decays significantly
-    power = 3.0  # Steepness of the decay curve
 
     # Calculate raw score using power-law exponential decay
     # Formula: 5000 * 2^(-(distance / scale)^power)

@@ -1,0 +1,52 @@
+# Combined Tools Configuration for GeoGuessr
+# Includes both visual and service tools:
+# - image_zoom_in_tool (visual tool from verl)
+# - search_wikipedia, geocode, reverse_geocode, code_sandbox (service tools from dots-tools)
+
+tools:
+  # Visual Tool - Image Processing
+  - name: image_zoom_in_tool
+    class_name: verl.tools.image_zoom_in_tool.ImageZoomInTool
+    config:
+      type: native
+      num_workers: 256
+      rate_limit: 256
+      timeout: 60
+      enable_global_rate_limit: true
+
+  # Service Tools - Information Retrieval
+  - name: search_wikipedia
+    class_name: verl.tools.search_wikipedia_tool.SearchWikipediaTool
+    config:
+      type: native
+      num_workers: 32
+      rate_limit: 32
+      timeout: 60
+      enable_global_rate_limit: true
+
+  - name: geocode
+    class_name: verl.tools.geocode_tool.GeocodeTool
+    config:
+      type: native
+      num_workers: 32
+      rate_limit: 32
+      timeout: 60
+      enable_global_rate_limit: true
+
+  - name: reverse_geocode
+    class_name: verl.tools.reverse_geocode_tool.ReverseGeocodeTool
+    config:
+      type: native
+      num_workers: 32
+      rate_limit: 32
+      timeout: 60
+      enable_global_rate_limit: true
+
+  - name: code_sandbox
+    class_name: verl.tools.code_sandbox_tool.CodeSandboxTool
+    config:
+      type: native
+      num_workers: 128
+      rate_limit: 128
+      timeout: 300
+      enable_global_rate_limit: true

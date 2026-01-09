@@ -1,0 +1,68 @@
+\begin{thebibliography}{12}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[{AIME}(2025)]{aime25}
+{AIME}.
+\newblock Aime problems and solutions.
+\newblock \url{https://artofproblemsolving.com/wiki/index.php/AIMEProblemsandSo lutions}, 2025.
+
+\bibitem[Chen et~al.(2023)Chen, Diao, Chen, Yao, Piao, Sun, Yang, Goebel, Jiang, and Chang]{chen2023sufficiency}
+Xing Chen, Dongcui Diao, Hechang Chen, Hengshuai Yao, Haiyin Piao, Zhixiao Sun, Zhiwei Yang, Randy Goebel, Bei Jiang, and Yi~Chang.
+\newblock The sufficiency of off-policyness and soft clipping: Ppo is still insufficient according to an off-policy measure.
+\newblock In \emph{Proceedings of the AAAI Conference on Artificial Intelligence}, volume~37, pages 7078--7086, 2023.
+
+\bibitem[DeepSeek-AI(2025)]{dpsk-r1}
+DeepSeek-AI.
+\newblock Deepseek-r1: Incentivizing reasoning capability in llms via reinforcement learning.
+\newblock \emph{arXiv preprint arXiv:2501.12948}, 2025.
+
+\bibitem[{HMMT}(2025)]{hmmt25}
+{HMMT}.
+\newblock Hmmt 2025.
+\newblock \url{ https://www.hmmt.org}, 2025.
+
+\bibitem[Jain et~al.(2024)Jain, Han, Gu, Li, Yan, Zhang, Wang, Solar-Lezama, Sen, and Stoica]{jain2024livecodebench}
+Naman Jain, King Han, Alex Gu, Wen-Ding Li, Fanjia Yan, Tianjun Zhang, Sida Wang, Armando Solar-Lezama, Koushik Sen, and Ion Stoica.
+\newblock Livecodebench: Holistic and contamination free evaluation of large language models for code.
+\newblock \emph{arXiv preprint arXiv:2403.07974}, 2024.
+
+\bibitem[Lin et~al.(2025)Lin, Bras, Richardson, Sabharwal, Poovendran, Clark, and Choi]{lin2025zebralogic}
+Bill~Yuchen Lin, Ronan~Le Bras, Kyle Richardson, Ashish Sabharwal, Radha Poovendran, Peter Clark, and Yejin Choi.
+\newblock Zebralogic: On the scaling limits of llms for logical reasoning.
+\newblock \emph{arXiv preprint arXiv:2502.01100}, 2025.
+
+\bibitem[{OpenAI}(2024)]{o1}
+{OpenAI}.
+\newblock Learning to reason with {LLMs}, 2024.
+\newblock URL \url{https://openai.com/index/learning-to-reason-with-llms/}.
+
+\bibitem[Qwen(2025)]{qwen3}
+Team Qwen.
+\newblock Qwen3 technical report.
+\newblock \emph{arXiv preprint arXiv:2505.09388}, 2025.
+
+\bibitem[Seed et~al.(2025)Seed, Chen, Fan, Liu, Liu, Lin, Wang, Wang, Wei, Xu, et~al.]{beyondaime}
+ByteDance Seed, Jiaze Chen, Tiantian Fan, Xin Liu, Lingjun Liu, Zhiqi Lin, Mingxuan Wang, Chengyi Wang, Xiangpeng Wei, Wenyuan Xu, et~al.
+\newblock Seed1. 5-thinking: Advancing superb reasoning models with reinforcement learning.
+\newblock \emph{arXiv preprint arXiv:2504.13914}, 2025.
+
+\bibitem[Shao et~al.(2024)Shao, Wang, Zhu, Xu, Song, Bi, Zhang, Zhang, Li, Wu, and Guo]{grpo}
+Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, Y.~K. Li, Y.~Wu, and Daya Guo.
+\newblock Deepseekmath: Pushing the limits of mathematical reasoning in open language models.
+\newblock \emph{arXiv preprint arXiv:2402.03300}, 2024.
+
+\bibitem[Wang et~al.(2024)Wang, Pan, Shi, Lu, Ren, Zhou, Zhan, and Li]{wang2024measuring}
+Ke~Wang, Junting Pan, Weikang Shi, Zimu Lu, Houxing Ren, Aojun Zhou, Mingjie Zhan, and Hongsheng Li.
+\newblock Measuring multimodal mathematical reasoning with math-vision dataset.
+\newblock \emph{Advances in Neural Information Processing Systems}, 37:\penalty0 95095--95169, 2024.
+
+\bibitem[Zheng et~al.(2025)Zheng, Liu, Li, Chen, Yu, Gao, Dang, Liu, Men, Yang, et~al.]{gspo}
+Chujie Zheng, Shixuan Liu, Mingze Li, Xiong-Hui Chen, Bowen Yu, Chang Gao, Kai Dang, Yuqiong Liu, Rui Men, An~Yang, et~al.
+\newblock Group sequence policy optimization.
+\newblock \emph{arXiv preprint arXiv:2507.18071}, 2025.
+
+\end{thebibliography}

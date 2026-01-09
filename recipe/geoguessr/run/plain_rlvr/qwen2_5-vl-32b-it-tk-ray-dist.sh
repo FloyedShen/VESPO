@@ -21,7 +21,7 @@ USE_CUSTOM_DATASET=${USE_CUSTOM_DATASET:-false}
 # Custom prompts (only used when USE_CUSTOM_DATASET=true)
 # These can be overridden by environment variables
 #CUSTOM_SYSTEM_PROMPT=${CUSTOM_SYSTEM_PROMPT:-"You are a helpful assistant. For each response, you MUST follow this two-step process\n\n1. FIRST: Write your reasoning and analysis within <think> </think> tags.\n2. THEN: Provide a complete, well-explained answer outside the tags.\n\nThe content outside the <think> tags should be a full response to the user, not just a brief final result. Explain your conclusion clearly before presenting any final answer or output."}
- CUSTOM_SYSTEM_PROMPT=${CUSTOM_SYSTEM_PROMPT:-"You are a helpful assistant. You FIRST think about the reasoning process as an internal monologue and then provide the final answer. The reasoning process MUST BE enclosed within <think> </think> tags."}
+CUSTOM_SYSTEM_PROMPT=${CUSTOM_SYSTEM_PROMPT:-"You are a helpful assistant. You FIRST think about the reasoning process as an internal monologue and then provide the final answer. The reasoning process MUST BE enclosed within <think> </think> tags."}
 # CUSTOM_SYSTEM_PROMPT=${CUSTOM_SYSTEM_PROMPT:-"You are a helpful assistant. "}
 CUSTOM_USER_PROMPT_TEMPLATE=${CUSTOM_USER_PROMPT_TEMPLATE:-"{content}"}
 
@@ -68,7 +68,7 @@ fi
 RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
 WORKING_DIR=${WORKING_DIR:-"${PWD}"}
 RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/recipe/geoguessr/run/runtime_env.yaml"}
-NNODES=${NNODES:-8}  # 4 nodes
+NNODES=${NNODES:-4}  # 4 nodes
 
 
 # ============ Submit to Ray ============

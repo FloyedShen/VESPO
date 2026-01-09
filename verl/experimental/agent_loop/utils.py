@@ -95,3 +95,27 @@ def add_generation_prompt_for_gpt_oss(message_content: str) -> str:
         Message content string with generation prompt
     """
     return message_content + "<|start|>assistant"
+
+
+def format_qwen_tool_response_manually(tool_response: str, tool_call_name: str) -> str:
+    """Format tool response for Qwen model with custom template.
+    Args:
+        tool_response: Tool response string
+        tool_call_name: Name of the tool that was called (not used in Qwen format)
+
+    Returns:
+        Formatted tool response string in Qwen format
+    """
+    return f"<|im_start|>user\n<tool_response>\n{tool_response}\n</tool_response><|im_end|>\n"
+
+
+def add_generation_prompt_for_qwen(message_content: str) -> str:
+    """Add generation prompt for Qwen model.
+    Args:
+        message_content: Message content string
+
+    Returns:
+        Message content string with generation prompt
+    """
+    return message_content + "<|im_start|>assistant\n"
+

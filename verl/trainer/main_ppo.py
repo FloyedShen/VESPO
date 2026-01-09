@@ -71,7 +71,28 @@ def run_ppo(config, task_runner_class=None) -> None:
         runtime_env = OmegaConf.merge(default_runtime_env, runtime_env_kwargs)
         ray_init_kwargs = OmegaConf.create({**ray_init_kwargs, "runtime_env": runtime_env})
         print(f"ray init kwargs: {ray_init_kwargs}")
-        ray.init(**OmegaConf.to_container(ray_init_kwargs), object_store_memory=536870912000)
+
+        # Convert to container for ray.init
+        ray_init_dict = OmegaConf.to_container(ray_init_kwargs)
+
+        # Check if running in Ray job or connecting to existing cluster
+        # Don't set object_store_memory in these cases:
+        # 1. RAY_JOB_ID is set (running as Ray job)
+        # 2. RAY_ADDRESS is set (will connect to cluster automatically)
+        # 3. address is explicitly specified in config
+        import os
+        is_ray_job = os.environ.get('RAY_JOB_ID') is not None
+        has_ray_address_env = os.environ.get('RAY_ADDRESS') is not None
+        has_address = 'address' in ray_init_dict and ray_init_dict['address'] is not None
+
+        if is_ray_job or has_ray_address_env or has_address:
+            # Running as Ray job or connecting to existing cluster
+            print("Connecting to existing Ray cluster, not setting object_store_memory")
+            ray.init(**ray_init_dict)
+        else:
+            # Starting new local cluster
+            print("Starting new Ray cluster with object_store_memory")
+            ray.init(**ray_init_dict, object_store_memory=536870912000)
 
     if task_runner_class is None:
         task_runner_class = ray.remote(num_cpus=1)(TaskRunner)  # please make sure main_task is not scheduled on head

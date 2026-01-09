@@ -22,7 +22,12 @@ from uuid import uuid4
 
 from verl.experimental.agent_loop.agent_loop import AgentLoopBase, AgentLoopOutput, register
 from verl.experimental.agent_loop.tool_parser import FunctionCall, ToolParser
-from verl.experimental.agent_loop.utils import add_generation_prompt_for_gpt_oss, format_gpt_oss_tool_response_manually
+from verl.experimental.agent_loop.utils import (
+    add_generation_prompt_for_gpt_oss,
+    add_generation_prompt_for_qwen,
+    format_gpt_oss_tool_response_manually,
+    format_qwen_tool_response_manually,
+)
 from verl.interactions.base import BaseInteraction
 from verl.interactions.utils.interaction_registry import initialize_interactions_from_config
 from verl.tools.schemas import ToolResponse
@@ -76,6 +81,9 @@ class AgentData:
 
         # Temporary state for tool calls
         self.tool_calls: list[FunctionCall] = []
+
+        # Tool call statistics
+        self.tool_call_counts: dict[str, int] = {}
 
         # Extra fields for dynamic addition
         self.extra_fields: dict[str, Any] = {}
@@ -150,6 +158,28 @@ class ToolAgentLoop(AgentLoopBase):
             interaction_kwargs=interaction_kwargs,
         )
 
+        # Initialize tools_kwargs with image data for image-aware tools
+        # This ensures all tools have access to images from the start
+        if agent_data.image_data is not None:
+            # Ensure image_data is a list for consistent handling
+            if not isinstance(agent_data.image_data, list):
+                agent_data.image_data = [agent_data.image_data]
+
+            # Initialize code_sandbox with all images (uses "images" plural)
+            if "code_sandbox" not in agent_data.tools_kwargs:
+                agent_data.tools_kwargs["code_sandbox"] = {}
+            if "create_kwargs" not in agent_data.tools_kwargs["code_sandbox"]:
+                agent_data.tools_kwargs["code_sandbox"]["create_kwargs"] = {}
+            agent_data.tools_kwargs["code_sandbox"]["create_kwargs"]["images"] = agent_data.image_data
+
+            # Ensure image_zoom_in_tool is set up (uses "images" plural for img_idx support)
+            if "image_zoom_in_tool" not in agent_data.tools_kwargs:
+                agent_data.tools_kwargs["image_zoom_in_tool"] = {}
+            if "create_kwargs" not in agent_data.tools_kwargs["image_zoom_in_tool"]:
+                agent_data.tools_kwargs["image_zoom_in_tool"]["create_kwargs"] = {}
+            # Pass all images to support img_idx parameter
+            agent_data.tools_kwargs["image_zoom_in_tool"]["create_kwargs"]["images"] = agent_data.image_data
+
         # State machine loop
         state = AgentState.PENDING
         while state != AgentState.TERMINATED:
@@ -169,6 +199,11 @@ class ToolAgentLoop(AgentLoopBase):
         response_ids = agent_data.prompt_ids[-len(agent_data.response_mask) :]
         prompt_ids = agent_data.prompt_ids[: len(agent_data.prompt_ids) - len(agent_data.response_mask)]
         multi_modal_data = {"image": agent_data.image_data} if agent_data.image_data is not None else {}
+
+        # Add tool call statistics to metrics
+        agent_data.metrics["tool_call_counts"] = agent_data.tool_call_counts
+        agent_data.metrics["total_tool_calls"] = sum(agent_data.tool_call_counts.values())
+
         output = AgentLoopOutput(
             prompt_ids=prompt_ids,
             response_ids=response_ids[: self.response_length],
@@ -277,6 +312,10 @@ class ToolAgentLoop(AgentLoopBase):
         with simple_timer("tool_calls", agent_data.metrics):
             responses = await asyncio.gather(*tasks)
 
+        # Record tool call statistics
+        for tool_name in tool_call_names:
+            agent_data.tool_call_counts[tool_name] = agent_data.tool_call_counts.get(tool_name, 0) + 1
+
         # Process tool responses and update multi_modal_data
         # Removed: agent_data.new_images_this_turn = []
         for tool_response, tool_reward, _ in responses:
@@ -291,9 +330,21 @@ class ToolAgentLoop(AgentLoopBase):
                     )
                 content = []
                 if tool_response.image:
-                    content.append({"type": "image"})
+                    # Add image placeholders - one for each image in the response
+                    if isinstance(tool_response.image, list):
+                        # Multiple images: add a placeholder for each
+                        for _ in tool_response.image:
+                            content.append({"type": "image"})
+                    else:
+                        # Single image: add one placeholder
+                        content.append({"type": "image"})
                 if tool_response.video:
-                    content.append({"type": "video"})
+                    # Add video placeholders - one for each video in the response
+                    if isinstance(tool_response.video, list):
+                        for _ in tool_response.video:
+                            content.append({"type": "video"})
+                    else:
+                        content.append({"type": "video"})
                 if tool_response.text:
                     content.append({"type": "text", "text": tool_response.text})
                 message = {"role": "tool", "content": content}
@@ -357,6 +408,25 @@ class ToolAgentLoop(AgentLoopBase):
                 response_ids = await self.loop.run_in_executor(
                     None, lambda: self.tokenizer.encode(tool_response_text, add_special_tokens=False)
                 )
+            elif self.tool_parser_name == "qwen":
+                logger.info("manually format tool responses for qwen")
+                # Format tool responses manually for Qwen
+                tool_response_texts = []
+                for i, tool_msg in enumerate(add_messages):
+                    content = tool_msg["content"]
+                    if isinstance(content, str):
+                        formatted = format_qwen_tool_response_manually(content, tool_call_names[i])
+                    else:
+                        # Handle multi-modal content
+                        text_parts = [c.get("text", "") for c in content if c.get("type") == "text"]
+                        text_content = " ".join(text_parts)
+                        formatted = format_qwen_tool_response_manually(text_content, tool_call_names[i])
+                    tool_response_texts.append(formatted)
+
+                tool_response_text = add_generation_prompt_for_qwen("".join(tool_response_texts))
+                response_ids = await self.loop.run_in_executor(
+                    None, lambda: self.tokenizer.encode(tool_response_text, add_special_tokens=False)
+                )
             else:
                 response_ids = await self.loop.run_in_executor(
                     None,
@@ -368,12 +438,31 @@ class ToolAgentLoop(AgentLoopBase):
         # Update prompt_ids and response_mask
 
         if new_images_this_turn:
+            # Accumulate images for code_sandbox and other tools
             if agent_data.image_data is None:
                 agent_data.image_data = []
             elif not isinstance(agent_data.image_data, list):
                 agent_data.image_data = [agent_data.image_data]
             for img in new_images_this_turn:
                 agent_data.image_data.append(img)
+
+            # Update tools_kwargs with accumulated images
+            # Now that we correctly add image placeholders, this should work properly
+            # image_0 = original input, image_1, image_2, ... = tool outputs in order
+
+            # Update code_sandbox with all accumulated images (uses "images" plural)
+            if "code_sandbox" not in agent_data.tools_kwargs:
+                agent_data.tools_kwargs["code_sandbox"] = {}
+            if "create_kwargs" not in agent_data.tools_kwargs["code_sandbox"]:
+                agent_data.tools_kwargs["code_sandbox"]["create_kwargs"] = {}
+            agent_data.tools_kwargs["code_sandbox"]["create_kwargs"]["images"] = agent_data.image_data
+
+            # Update image_zoom_in_tool with all images (uses "images" plural for img_idx support)
+            if "image_zoom_in_tool" not in agent_data.tools_kwargs:
+                agent_data.tools_kwargs["image_zoom_in_tool"] = {}
+            if "create_kwargs" not in agent_data.tools_kwargs["image_zoom_in_tool"]:
+                agent_data.tools_kwargs["image_zoom_in_tool"]["create_kwargs"] = {}
+            agent_data.tools_kwargs["image_zoom_in_tool"]["create_kwargs"]["images"] = agent_data.image_data
 
         agent_data.prompt_ids += response_ids
         agent_data.response_mask += [0] * len(response_ids)

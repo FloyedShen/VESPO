@@ -448,7 +448,7 @@ class RayPPOTrainer:
         elif isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64,
                               np.uint8, np.uint16, np.uint32, np.uint64)):
             return int(obj)
-        elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+        elif isinstance(obj, (np.float16, np.float32, np.float64)):
             return float(obj)
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
@@ -570,6 +570,10 @@ class RayPPOTrainer:
         sample_turns = []
         sample_uids = []
 
+        # Tool usage statistics collectors
+        all_tool_call_counts = []  # List of dicts, one per sample
+        all_total_tool_calls = []  # List of ints, one per sample
+
         for test_data in self.val_dataloader:
             test_batch = DataProto.from_single_dict(test_data)
 
@@ -588,9 +592,13 @@ class RayPPOTrainer:
                 return {}
 
             # Store original inputs
-            input_ids = test_batch.batch["input_ids"]
-            # TODO: Can we keep special tokens except for padding tokens?
-            input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
+            # Try to use raw_prompt_text_with_tools if available (for tool-enabled training)
+            if "raw_prompt_text_with_tools" in test_batch.non_tensor_batch:
+                input_texts = test_batch.non_tensor_batch["raw_prompt_text_with_tools"]
+            else:
+                input_ids = test_batch.batch["input_ids"]
+                # TODO: Can we keep special tokens except for padding tokens?
+                input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
             sample_inputs.extend(input_texts)
             sample_uids.extend(test_batch.non_tensor_batch["uid"])
 
@@ -652,9 +660,26 @@ class RayPPOTrainer:
             if "__num_turns__" in test_batch.non_tensor_batch:
                 sample_turns.append(test_batch.non_tensor_batch["__num_turns__"])
 
+            # collect tool usage statistics from meta_info
+            for item in test_batch:
+                if "metrics" in item.meta_info:
+                    tool_call_counts = item.meta_info["metrics"].get("tool_call_counts", {})
+                    total_tool_calls = item.meta_info["metrics"].get("total_tool_calls", 0)
+                    all_tool_call_counts.append(tool_call_counts)
+                    all_total_tool_calls.append(total_tool_calls)
+                else:
+                    # No tool usage for this sample
+                    all_tool_call_counts.append({})
+                    all_total_tool_calls.append(0)
+
             data_source_lst.append(test_batch.non_tensor_batch.get("data_source", ["unknown"] * reward_tensor.shape[0]))
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
+
+        # Add tool statistics to reward_extra_infos_dict for JSONL output
+        if len(all_tool_call_counts) > 0:
+            reward_extra_infos_dict["tool_call_counts"] = all_tool_call_counts
+            reward_extra_infos_dict["total_tool_calls"] = all_total_tool_calls
 
         # dump generations
         val_data_dir = self.config.trainer.get("validation_data_dir", None)
@@ -696,6 +721,67 @@ class RayPPOTrainer:
             metric_dict["val-aux/num_turns/min"] = sample_turns.min()
             metric_dict["val-aux/num_turns/max"] = sample_turns.max()
             metric_dict["val-aux/num_turns/mean"] = sample_turns.mean()
+
+        # Calculate tool usage statistics
+        if len(all_tool_call_counts) > 0:
+            from collections import Counter
+
+            # Overall statistics
+            total_samples = len(all_tool_call_counts)
+            samples_with_tools = sum(1 for counts in all_tool_call_counts if counts)
+            samples_without_tools = total_samples - samples_with_tools
+
+            metric_dict["val-aux/tools/total_samples"] = total_samples
+            metric_dict["val-aux/tools/samples_with_tools"] = samples_with_tools
+            metric_dict["val-aux/tools/samples_without_tools"] = samples_without_tools
+            metric_dict["val-aux/tools/tool_adoption_rate"] = samples_with_tools / max(total_samples, 1)
+
+            # Per-tool statistics
+            tool_total_calls = Counter()
+            for counts in all_tool_call_counts:
+                for tool, count in counts.items():
+                    tool_total_calls[tool] += count
+
+            total_calls = sum(tool_total_calls.values())
+            metric_dict["val-aux/tools/total_calls"] = total_calls
+
+            if samples_with_tools > 0:
+                metric_dict["val-aux/tools/avg_calls_per_sample_using_tools"] = total_calls / samples_with_tools
+
+            # Log each tool's usage
+            for tool, calls in tool_total_calls.most_common():
+                metric_dict[f"val-aux/tools/calls/{tool}"] = calls
+                metric_dict[f"val-aux/tools/calls_pct/{tool}"] = calls / max(total_calls, 1) * 100
+                # Average calls per sample (across all samples, including those not using this tool)
+                metric_dict[f"val-aux/tools/avg_per_sample/{tool}"] = calls / total_samples
+
+            # Distribution of number of tool calls per sample
+            all_total_tool_calls_array = np.array(all_total_tool_calls)
+            if all_total_tool_calls_array.size > 0:
+                metric_dict["val-aux/tools/calls_per_sample/min"] = all_total_tool_calls_array.min()
+                metric_dict["val-aux/tools/calls_per_sample/max"] = all_total_tool_calls_array.max()
+                metric_dict["val-aux/tools/calls_per_sample/mean"] = all_total_tool_calls_array.mean()
+                metric_dict["val-aux/tools/calls_per_sample/median"] = float(np.median(all_total_tool_calls_array))
+
+            # Distribution of number of unique tools used per sample
+            num_unique_tools_per_sample = [len(counts) for counts in all_tool_call_counts]
+            num_unique_tools_array = np.array(num_unique_tools_per_sample)
+            if num_unique_tools_array.size > 0:
+                metric_dict["val-aux/tools/unique_tools_per_sample/min"] = num_unique_tools_array.min()
+                metric_dict["val-aux/tools/unique_tools_per_sample/max"] = num_unique_tools_array.max()
+                metric_dict["val-aux/tools/unique_tools_per_sample/mean"] = num_unique_tools_array.mean()
+
+            # Distribution by number of unique tools (0, 1, 2, 3+)
+            unique_tool_dist = Counter(num_unique_tools_per_sample)
+            for num_tools, count in sorted(unique_tool_dist.items()):
+                if num_tools <= 3:
+                    metric_dict[f"val-aux/tools/samples_using_{num_tools}_tools"] = count
+                    metric_dict[f"val-aux/tools/samples_using_{num_tools}_tools_pct"] = count / total_samples * 100
+            # Group 4+ tools together
+            samples_4plus = sum(count for num_tools, count in unique_tool_dist.items() if num_tools >= 4)
+            if samples_4plus > 0:
+                metric_dict["val-aux/tools/samples_using_4plus_tools"] = samples_4plus
+                metric_dict["val-aux/tools/samples_using_4plus_tools_pct"] = samples_4plus / total_samples * 100
 
         return metric_dict
 

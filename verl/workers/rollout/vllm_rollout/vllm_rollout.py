@@ -157,7 +157,19 @@ class vLLMAsyncRollout(BaseRollout):
                     address = f"tcp://{ip}:{port}"
             self.socket.bind(address)
 
-        loop = asyncio.get_running_loop()
+        # Get or create event loop to support both sync and async initialization
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop - create one for synchronous initialization
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = None
+            if loop is None or loop.is_closed():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
         self.zmq_loop_task = loop.create_task(self._loop_forever())
 
         return address

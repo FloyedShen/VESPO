@@ -1211,6 +1211,11 @@ def compute_policy_loss_vanilla(
     # Clamp negative_approx_kl for stability
     negative_approx_kl = torch.clamp(negative_approx_kl, min=-20.0, max=20.0)
     ratio = torch.exp(negative_approx_kl)
+
+    # Apply rollout correction weights if provided
+    if rollout_is_weights is not None:
+        ratio = ratio * rollout_is_weights
+
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
 
     pg_losses1 = -advantages * ratio
@@ -1233,10 +1238,6 @@ def compute_policy_loss_vanilla(
     )
 
     pg_losses = torch.where(advantages < 0, clip_pg_losses2, clip_pg_losses1)
-
-    # Apply rollout correction weights if provided
-    if rollout_is_weights is not None:
-        pg_losses = pg_losses * rollout_is_weights
 
     pg_loss = agg_loss(
         loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode, **config.global_batch_info
@@ -1286,6 +1287,9 @@ def compute_policy_loss_vanilla(
         "actor/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
         "actor/is_ratio_original": is_ratio_original.detach().item(),
         "actor/is_ratio_used": is_ratio_used.detach().item(),
+        "actor/clip_low": clip_ratio_low,
+        "actor/clip_high": clip_ratio_high,
+        "actor/clip_c": clip_ratio_c,
     }
     return pg_loss, pg_metrics
 
@@ -1340,30 +1344,149 @@ def compute_policy_loss_gspo(
     # finaly exp() to remove log
     seq_importance_ratio = torch.exp(log_seq_importance_ratio)
 
+    # Apply rollout correction weights if provided (BEFORE clipping)
+    # This makes: ratio = (π_current / π_old) × (π_old / π_rollout) = π_current / π_rollout
+    # which is equivalent to bypass mode when threshold is high
+    if rollout_is_weights is not None:
+        seq_importance_ratio = seq_importance_ratio * rollout_is_weights
+
     pg_losses1 = -advantages * seq_importance_ratio
     pg_losses2 = -advantages * torch.clamp(seq_importance_ratio, 1 - clip_ratio_low, 1 + clip_ratio_high)
     pg_losses = torch.maximum(pg_losses1, pg_losses2)
 
-    # Apply rollout correction weights if provided
-    if rollout_is_weights is not None:
-        pg_losses = pg_losses * rollout_is_weights
-
     # for GSPO, we need to aggregate the loss at the sequence level (seq-mean-token-mean)
-    pg_loss = agg_loss(
-        loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode="seq-mean-token-mean", **config.global_batch_info
-    )
+    pg_loss = agg_loss(loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode="seq-mean-token-mean", **config.global_batch_info)
+    # pg_loss = agg_loss(loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode="token-mean", **config.global_batch_info)
 
     # For compatibility, return zero for pg_clipfrac_lower (not used in standard GSPO)
     pg_clipfrac = verl_F.masked_mean(torch.gt(pg_losses2, pg_losses1).float(), response_mask)
     pg_clipfrac_lower = torch.tensor(0.0, device=pg_loss.device)
 
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+
+    # Compute IS ratio statistics (for comparison with IS Reshape)
+    with torch.no_grad():
+        is_ratio_original = verl_F.masked_mean(seq_importance_ratio, response_mask)
+
+        # Check if clipping is effectively disabled
+        clipping_disabled = clip_ratio_low >= 10000.0 or clip_ratio_high >= 10000.0
+
+        if clipping_disabled:
+            ratio_used = seq_importance_ratio
+        else:
+            ratio_clipped = torch.clamp(seq_importance_ratio, 1 - clip_ratio_low, 1 + clip_ratio_high)
+            ratio_used = torch.where(torch.gt(pg_losses2, pg_losses1), ratio_clipped, seq_importance_ratio)
+
+        is_ratio_used = verl_F.masked_mean(ratio_used, response_mask)
+
     pg_metrics = {
         "actor/pg_clipfrac": pg_clipfrac.detach().item(),
         "actor/ppo_kl": ppo_kl.detach().item(),
         "actor/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
+        "actor/is_ratio_original": is_ratio_original.detach().item(),
+        "actor/is_ratio_used": is_ratio_used.detach().item(),
+        "actor/clip_low": clip_ratio_low,
+        "actor/clip_high": clip_ratio_high,
     }
     return pg_loss, pg_metrics
+
+
+# @register_policy_loss("gspo_nomu")
+# def compute_policy_loss_gspo_nomu(
+#     old_log_prob: torch.Tensor,
+#     log_prob: torch.Tensor,
+#     advantages: torch.Tensor,
+#     response_mask: torch.Tensor,
+#     loss_agg_mode: str = "seq-mean-token-mean",
+#     config: Optional[ActorConfig] = None,
+#     rollout_is_weights: torch.Tensor | None = None,
+# ) -> tuple[torch.Tensor, dict[str, Any]]:
+#     """
+#     GSPO-NoMu: GSPO with group-relative importance ratio (no μ).
+#
+#     Instead of W = π/μ, we use W = π/π_group_mean.
+#     This avoids train-inference mismatch issues and uses group mean as reference.
+#
+#     The importance ratio measures how much the current policy differs from
+#     the group average, rather than from the behavior policy μ.
+#
+#     Key Change:
+#         - Original GSPO: log_ratio = log(π) - log(μ)
+#         - GSPO-NoMu: seq_log_w = seq_log_pi - mean(seq_log_pi[group])
+#
+#     Args:
+#         old_log_prob: Log probabilities from behavior policy μ (used only for metrics)
+#         log_prob: Log probabilities from current policy π_θ
+#         advantages: Advantage estimates
+#         response_mask: Valid token mask
+#         loss_agg_mode: Loss aggregation strategy
+#         config: Actor config with clip_ratio settings and n_samples (group size)
+#         rollout_is_weights: Optional TIS weights (ignored in NoMu)
+#     """
+#     assert config is not None
+#     assert isinstance(config, ActorConfig)
+#     clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
+#     clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
+#
+#     # Get group size from config.rollout_n (number of samples per prompt)
+#     n_samples = config.rollout_n
+#
+#     batch_size = log_prob.shape[0]
+#     n_groups = batch_size // n_samples
+#
+#     # Compute sequence-level log probabilities
+#     seq_lengths = torch.sum(response_mask, dim=-1).clamp(min=1)
+#     seq_log_pi = torch.sum(log_prob * response_mask, dim=-1) / seq_lengths  # (batch_size,)
+#
+#     # Compute group-relative log ratio (NoMu)
+#     # Reshape to (n_groups, n_samples), compute mean per group, then subtract
+#     seq_log_pi_grouped = seq_log_pi.view(n_groups, n_samples)
+#     group_mean_log_pi = seq_log_pi_grouped.mean(dim=1, keepdim=True)  # (n_groups, 1)
+#     seq_log_ratio_nomu = (seq_log_pi_grouped - group_mean_log_pi).view(batch_size)  # (batch_size,)
+#
+#     # Combined ratio at token level (same as GSPO but with NoMu seq ratio)
+#     # s_i,t(θ) = sg[s_i(θ)] · π_θ(y_i,t|x, y_i,<t) / sg[π_θ(y_i,t|x, y_i,<t)]
+#     log_seq_importance_ratio = log_prob - log_prob.detach() + seq_log_ratio_nomu.detach().unsqueeze(-1)
+#     log_seq_importance_ratio = torch.clamp(log_seq_importance_ratio, max=10.0)
+#
+#     seq_importance_ratio = torch.exp(log_seq_importance_ratio)
+#
+#     pg_losses1 = -advantages * seq_importance_ratio
+#     pg_losses2 = -advantages * torch.clamp(seq_importance_ratio, 1 - clip_ratio_low, 1 + clip_ratio_high)
+#     pg_losses = torch.maximum(pg_losses1, pg_losses2)
+#
+#     # Apply rollout correction weights if provided
+#     if rollout_is_weights is not None:
+#         pg_losses = pg_losses * rollout_is_weights
+#
+#     pg_loss = agg_loss(
+#         loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode="seq-mean-token-mean", **config.global_batch_info
+#     )
+#
+#     # Metrics
+#     pg_clipfrac = verl_F.masked_mean(torch.gt(pg_losses2, pg_losses1).float(), response_mask)
+#     pg_clipfrac_lower = torch.tensor(0.0, device=pg_loss.device)
+#
+#     # Compute original KL for comparison (using old_log_prob)
+#     negative_approx_kl = log_prob - old_log_prob
+#     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+#
+#     # NoMu specific metrics
+#     w_seq_nomu = torch.exp(seq_log_ratio_nomu.detach())
+#
+#     pg_metrics = {
+#         "actor/pg_clipfrac": pg_clipfrac.detach().item(),
+#         "actor/ppo_kl": ppo_kl.detach().item(),
+#         "actor/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
+#         # NoMu specific
+#         "gspo_nomu/w_seq_mean": w_seq_nomu.mean().item(),
+#         "gspo_nomu/w_seq_max": w_seq_nomu.max().item(),
+#         "gspo_nomu/w_seq_min": w_seq_nomu.min().item(),
+#         "gspo_nomu/w_seq_std": w_seq_nomu.std().item(),
+#         "gspo_nomu/seq_log_ratio_mean": seq_log_ratio_nomu.mean().item(),
+#         "gspo_nomu/n_samples": n_samples,
+#     }
+#     return pg_loss, pg_metrics
 
 
 @register_policy_loss("sapo")
@@ -1414,6 +1537,10 @@ def compute_policy_loss_sapo(
     # finally exp() to remove log and get r_{i,t}(θ)
     ratio = torch.exp(negative_approx_kl)
 
+    # Apply rollout correction weights if provided
+    if rollout_is_weights is not None:
+        ratio = ratio * rollout_is_weights
+
     # tau_{i,t} is tau_pos if adv > 0 else tau_neg
     taus = torch.where(
         condition=advantages > 0,
@@ -1426,10 +1553,6 @@ def compute_policy_loss_sapo(
 
     # compute policy gradient loss
     pg_losses = -gates * advantages
-
-    # Apply rollout correction weights if provided
-    if rollout_is_weights is not None:
-        pg_losses = pg_losses * rollout_is_weights
 
     # for SAPO, we need to aggregate the loss at the sequence level (seq-mean-token-mean)
     pg_loss = agg_loss(

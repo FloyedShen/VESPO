@@ -64,12 +64,28 @@ class PolicyLossConfig(BaseConfig):
     The inheritance from BaseConfig provides omegaconf.DictConfig-like interface for a dataclass config.
 
     Args:
-        loss_mode (str): Loss function mode. Options: 'vanilla', 'clip-cov', 'kl-cov', 'gpg'.
+        loss_mode (str): Loss function mode. Options: 'vanilla', 'clip-cov', 'kl-cov', 'gpg',
+            'gamma_is', 'gamma_is_adaptive', 'vespo', 'is_reshape', 'is_reshape_static', etc.
         clip_cov_ratio (float): Ratio of tokens to be clipped for clip-cov loss.
         clip_cov_lb (float): Lower bound for clip-cov loss.
         clip_cov_ub (float): Upper bound for clip-cov loss.
         kl_cov_ratio (float): Ratio of tokens to be applied KL penalty for kl-cov loss.
         ppo_kl_coef (float): KL divergence penalty coefficient.
+        gamma_is (dict): Configuration for gamma_is and gamma_is_adaptive loss modes.
+            Contains: k_pos, lambda_pos, k_neg, lambda_neg, enable_adaptive, min_alpha.
+        vespo (dict): Configuration for vespo loss mode (sequence-level Gamma-IS).
+            Contains: k_pos, lambda_pos, k_neg, lambda_neg.
+        is_reshape (dict): Configuration for is_reshape loss mode.
+        is_reshape_static (dict): Configuration for is_reshape_static loss mode.
+        is_reshape_sym (dict): Configuration for is_reshape_sym loss mode.
+        is_reshape_v7 (dict): Configuration for is_reshape_v7 loss mode.
+        sapo (dict): Configuration for sapo loss mode.
+        sapo_is (dict): Configuration for sapo_is loss mode.
+        ib_is (dict): Configuration for ib_is loss mode.
+        harmonic_is (dict): Configuration for harmonic_is loss mode.
+        cauchy_is (dict): Configuration for cauchy_is loss mode.
+        welsch_is (dict): Configuration for welsch_is loss mode.
+        grpo_clip_asymmetric (dict): Configuration for grpo_clip_asymmetric loss mode.
     """
 
     loss_mode: str = "vanilla"
@@ -78,6 +94,27 @@ class PolicyLossConfig(BaseConfig):
     clip_cov_ub: float = 5.0
     kl_cov_ratio: float = 0.0002
     ppo_kl_coef: float = 0.1
+    # Additional loss mode configs - stored as dicts to allow flexible parameters
+    gamma_is: dict[str, Any] = field(default_factory=dict)
+    vespo: dict[str, Any] = field(default_factory=dict)  # For vespo loss mode
+    is_reshape: dict[str, Any] = field(default_factory=dict)
+    is_reshape_static: dict[str, Any] = field(default_factory=dict)
+    is_reshape_sym: dict[str, Any] = field(default_factory=dict)
+    is_reshape_v7: dict[str, Any] = field(default_factory=dict)
+    is_reshape_pos: dict[str, Any] = field(default_factory=dict)
+    is_reshape_per_sample: dict[str, Any] = field(default_factory=dict)
+    is_reshape_renyi: dict[str, Any] = field(default_factory=dict)
+    is_reshape_v4: dict[str, Any] = field(default_factory=dict)
+    is_reshape_v5: dict[str, Any] = field(default_factory=dict)
+    is_reshape_harmonic: dict[str, Any] = field(default_factory=dict)
+    sapo: dict[str, Any] = field(default_factory=dict)
+    sapo_is: dict[str, Any] = field(default_factory=dict)
+    sapo_is_mono: dict[str, Any] = field(default_factory=dict)
+    ib_is: dict[str, Any] = field(default_factory=dict)
+    harmonic_is: dict[str, Any] = field(default_factory=dict)
+    cauchy_is: dict[str, Any] = field(default_factory=dict)
+    welsch_is: dict[str, Any] = field(default_factory=dict)
+    grpo_clip_asymmetric: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

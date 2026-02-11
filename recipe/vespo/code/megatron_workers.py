@@ -18,7 +18,7 @@ Extends veRL Megatron workers for VESPO experiments with per-policy-update metri
 
 Core modifications:
 1. Monkey-patches update_policy to track metrics per optimizer.step() instead of per epoch
-2. Custom policy_loss support: Handles is_reshape, gamma_is, etc. configs
+2. Custom policy_loss support: Handles vespo config
 3. Passes per-update metrics through meta_info["update_metrics"]
 """
 
@@ -50,7 +50,7 @@ from verl.utils.py_functional import append_to_dict
 from verl.workers.config.actor import PolicyLossConfig
 from verl.workers.megatron_workers import AsyncActorRolloutRefWorker
 
-# Import to register custom policy loss functions (is_reshape, gamma_is, etc.)
+# Import to register custom policy loss functions (vespo, etc.)
 # This import has side effects - it registers policy loss functions via decorators
 import recipe.vespo.code.core_algos  # noqa: F401
 
@@ -216,7 +216,7 @@ class ISReshapeMegatronActorRolloutRefWorker(AsyncActorRolloutRefWorker):
 
     Core changes from parent:
     1. Monkey-patches update_policy for per-update metrics tracking
-    2. Handles custom policy_loss configs (is_reshape, gamma_is, etc.)
+    2. Handles custom policy_loss configs (vespo, etc.)
     3. Extracts per-update metrics from update_policy return format
 
     Note: Extends AsyncActorRolloutRefWorker for vLLM async mode support.

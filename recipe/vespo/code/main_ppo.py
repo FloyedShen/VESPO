@@ -18,7 +18,7 @@ Main entry point for VESPO experiments with Megatron/FSDP backend.
 
 Features:
 1. Per-update metrics tracking: Each optimizer.step() is logged as a separate step
-2. Custom policy_loss support: Handles is_reshape, gamma_is, etc. configs from core_algos.py
+2. Custom policy_loss support: Handles vespo config from core_algos.py
 3. Compatible with vLLM async rollout mode
 
 Usage:
@@ -26,7 +26,7 @@ Usage:
         --config-path=../../../verl/trainer/config \\
         --config-name=ppo_megatron_trainer \\
         algorithm.adv_estimator=grpo \\
-        actor_rollout_ref.actor.policy_loss.loss_mode=gamma_is \\
+        actor_rollout_ref.actor.policy_loss.loss_mode=vespo \\
         ...
 """
 

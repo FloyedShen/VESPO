@@ -182,10 +182,10 @@ ray job submit --no-wait \
     actor_rollout_ref.actor.megatron.expert_tensor_parallel_size=$ETP \
     +actor_rollout_ref.actor.global_batch_info.dp_size=1 \
     actor_rollout_ref.actor.policy_loss.loss_mode=vespo \
-    +actor_rollout_ref.actor.policy_loss.gamma_is.k_pos=$K_POS \
-    +actor_rollout_ref.actor.policy_loss.gamma_is.lambda_pos=$LAMBDA_POS \
-    +actor_rollout_ref.actor.policy_loss.gamma_is.k_neg=$K_NEG \
-    +actor_rollout_ref.actor.policy_loss.gamma_is.lambda_neg=$LAMBDA_NEG \
+    +actor_rollout_ref.actor.policy_loss.vespo.k_pos=$K_POS \
+    +actor_rollout_ref.actor.policy_loss.vespo.lambda_pos=$LAMBDA_POS \
+    +actor_rollout_ref.actor.policy_loss.vespo.k_neg=$K_NEG \
+    +actor_rollout_ref.actor.policy_loss.vespo.lambda_neg=$LAMBDA_NEG \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.kl_loss_coef=0.001 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \

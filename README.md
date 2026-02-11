@@ -80,11 +80,11 @@ bash recipe/vespo/run/fully_async/vespo_S_1.0_N_4.sh
 If you find this work useful, please consider citing:
 
 ```bibtex
-@article{vespo2026,
+@misc{vespo2026,
   title={VESPO: Variational Sequence-Level Soft Policy Optimization for Stable Off-Policy LLM Training},
-  author={},
-  journal={arXiv preprint arXiv:xxxx.xxxxx},
-  year={2026}
+  author={Guobin Shen and Chenxiao Zhao and Xiang Cheng and Lei Huang and Xing Yu},
+  year={2026},
+  url={https://github.com/FloyedShen/VESPO}
 }
 ```
 

@@ -3,7 +3,7 @@
 # VESPO: Variational Sequence-Level Soft Policy Optimization for Stable Off-Policy LLM Training
 
 [![Paper](https://img.shields.io/badge/paper-A42C25?style=for-the-badge&logo=arxiv&logoColor=white)](https://arxiv.org/abs/xxxx.xxxxx)
-[![Github](https://img.shields.io/badge/VESPO-000000?style=for-the-badge&logo=github&logoColor=000&logoColor=white)](https://github.com/xxxx/vespo)
+[![Github](https://img.shields.io/badge/VESPO-000000?style=for-the-badge&logo=github&logoColor=000&logoColor=white)](https://github.com/FloyedShen/VESPO)
 
 </div>
 

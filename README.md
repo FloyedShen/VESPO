@@ -1,6 +1,6 @@
 <div align="center">
 
-# VESPO: Variational Sequence-level Soft Policy Optimization for Stable Off-Policy LLM Training
+# VESPO: Variational Sequence-Level Soft Policy Optimization for Stable Off-Policy LLM Training
 
 [![Paper](https://img.shields.io/badge/paper-A42C25?style=for-the-badge&logo=arxiv&logoColor=white)](https://arxiv.org/abs/xxxx.xxxxx)
 [![Github](https://img.shields.io/badge/VESPO-000000?style=for-the-badge&logo=github&logoColor=000&logoColor=white)](https://github.com/xxxx/vespo)
@@ -81,7 +81,7 @@ If you find this work useful, please consider citing:
 
 ```bibtex
 @article{vespo2026,
-  title={VESPO: Variational Sequence-level Soft Policy Optimization for Stable Off-Policy LLM Training},
+  title={VESPO: Variational Sequence-Level Soft Policy Optimization for Stable Off-Policy LLM Training},
   author={},
   journal={arXiv preprint arXiv:xxxx.xxxxx},
   year={2026}

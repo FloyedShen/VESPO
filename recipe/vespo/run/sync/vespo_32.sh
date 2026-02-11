@@ -9,9 +9,9 @@ export NCCL_TIMEOUT=3600
 export NCCL_ASYNC_ERROR_HANDLING=1
 
 # ============================================================================
-# IS Reshape with Gamma-IS Loss for Qwen3-30B-A3B (Megatron Backend)
+# VESPO with Gamma-IS Loss for Qwen3-30B-A3B (Megatron Backend)
 #
-# This script runs IS Reshape training with Megatron for MoE models like
+# This script runs VESPO training with Megatron for MoE models like
 # Qwen3-30B-A3B that require expert parallelism.
 #
 # Key differences from FSDP:

@@ -1,4 +1,4 @@
-# Copyright 2024 IS Reshape Authors
+# Copyright 2024 VESPO Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-IS Reshape Megatron Actor
+VESPO Megatron Actor
 
 This module is kept for backwards compatibility but the actual implementation
 is in megatron_workers.py via monkey-patching.
@@ -23,7 +23,7 @@ with _is_reshape_update_policy from megatron_workers.py. NoMu support is impleme
 
 from verl.workers.actor.megatron_actor import MegatronPPOActor
 
-# Import to register "is_reshape" and related policy loss functions
+# Import to register VESPO and related policy loss functions
 import recipe.vespo.code.core_algos  # noqa: F401
 
 __all__ = ["ISReshapeMegatronPPOActor"]
@@ -31,7 +31,7 @@ __all__ = ["ISReshapeMegatronPPOActor"]
 
 class ISReshapeMegatronPPOActor(MegatronPPOActor):
     """
-    Extended MegatronPPOActor for IS Reshape experiments.
+    Extended MegatronPPOActor for VESPO experiments.
 
     Note: The actual update_policy implementation with per-update metrics tracking
     and NoMu support is monkey-patched from megatron_workers.py.

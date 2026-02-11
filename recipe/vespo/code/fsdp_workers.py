@@ -1,4 +1,4 @@
-# Copyright 2024 IS Reshape Authors
+# Copyright 2024 VESPO Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-IS Reshape FSDP Workers
+VESPO FSDP Workers
 
 This module extends the veRL FSDP workers to use the custom ISReshapeDataParallelPPOActor,
-which tracks per-policy-update metrics for IS Reshape experiments.
+which tracks per-policy-update metrics for VESPO experiments.
 
 Usage:
     In your training script, use ISReshapeRolloutRefWorker instead of ActorRolloutRefWorker:
@@ -68,7 +68,7 @@ class ISReshapeRolloutRefWorker(AsyncActorRolloutRefWorker):
     Extended AsyncActorRolloutRefWorker that uses ISReshapeDataParallelPPOActor.
 
     This worker overrides init_model to instantiate the custom actor class
-    that tracks per-policy-update IS Reshape metrics (gamma, sigma_sq, ess_ratio).
+    that tracks per-policy-update VESPO metrics (gamma, sigma_sq, ess_ratio).
 
     Note: We extend AsyncActorRolloutRefWorker instead of ActorRolloutRefWorker
     because vLLM only supports async mode and requires methods like get_zeromq_address.
@@ -109,7 +109,7 @@ class ISReshapeRolloutRefWorker(AsyncActorRolloutRefWorker):
         # Call parent's init_model to handle all the standard initialization
         super().init_model()
 
-        # Replace the actor with our custom IS Reshape actor
+        # Replace the actor with our custom VESPO actor
         # Note: super().init_model() already created self.actor with a properly converted ActorConfig
         # We reuse that config and just replace the actor class
         if self._is_actor:

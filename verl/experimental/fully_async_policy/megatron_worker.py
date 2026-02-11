@@ -39,7 +39,7 @@ from .checkpoint_engine import CheckpointEngine
 # Import to register custom policy loss functions (vespo, etc.)
 # This import has side effects - it registers policy loss functions via decorators
 try:
-    import recipe.is_shape.code.core_algos  # noqa: F401
+    import recipe.vespo.code.core_algos  # noqa: F401
 except ImportError:
     # If custom core_algos is not available, skip registration
     pass

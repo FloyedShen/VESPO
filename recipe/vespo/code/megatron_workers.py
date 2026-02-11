@@ -1,4 +1,4 @@
-# Copyright 2024 IS Reshape Authors
+# Copyright 2024 VESPO Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-IS Reshape Megatron Workers
+VESPO Megatron Workers
 
-Extends veRL Megatron workers for IS Reshape experiments with per-policy-update metrics tracking.
+Extends veRL Megatron workers for VESPO experiments with per-policy-update metrics tracking.
 
 Core modifications:
 1. Monkey-patches update_policy to track metrics per optimizer.step() instead of per epoch
@@ -212,7 +212,7 @@ def _is_reshape_update_policy(self, dataloader: Iterable[DataProto]) -> dict:
 
 class ISReshapeMegatronActorRolloutRefWorker(AsyncActorRolloutRefWorker):
     """
-    Extended Megatron AsyncActorRolloutRefWorker for IS Reshape experiments.
+    Extended Megatron AsyncActorRolloutRefWorker for VESPO experiments.
 
     Core changes from parent:
     1. Monkey-patches update_policy for per-update metrics tracking

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Preprocess datasets for IS Reshape experiments.
+Preprocess datasets for VESPO experiments.
 
 Training sets:
 - agentica-org/DeepScaleR-Preview-Dataset
@@ -753,7 +753,7 @@ def process_eurus_code_datasets(output_dir):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Preprocess datasets for IS Reshape experiments")
+    parser = argparse.ArgumentParser(description="Preprocess datasets for VESPO experiments")
     parser.add_argument(
         "--output_dir",
         type=str,
@@ -777,7 +777,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
-    print("IS Reshape Dataset Preprocessing")
+    print("VESPO Dataset Preprocessing")
     print("=" * 80)
     print(f"Output directory: {output_dir}")
     print(f"Datasets to process: {args.datasets}")

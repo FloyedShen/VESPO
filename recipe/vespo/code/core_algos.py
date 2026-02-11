@@ -1,4 +1,4 @@
-# Copyright 2024 IS Reshape Authors
+# Copyright 2024 VESPO Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-IS Reshape Core Algorithms
+VESPO Core Algorithms
 
-This module contains the IS Reshape policy loss implementation.
-Import this module to register the "is_reshape" policy loss with veRL.
+This module contains the VESPO policy loss implementation.
+Import this module to register the VESPO policy loss with veRL.
 
 Usage:
     # Import to register the policy loss
     import recipe.vespo.code.core_algos
 
-    # Then use loss_mode="is_reshape" in config
+    # Then use loss_mode="vespo" in config
 """
 
 from typing import Any, Optional

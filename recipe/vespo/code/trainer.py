@@ -1,4 +1,4 @@
-# Copyright 2024 IS Reshape Authors
+# Copyright 2024 VESPO Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-IS Reshape Trainer
+VESPO Trainer
 
 Custom trainer that logs metrics at each policy update step.
 
@@ -62,7 +62,7 @@ __all__ = ["ISReshapeTrainer", "ResourcePoolManager"]
 
 class ISReshapeTrainer(RayPPOTrainer):
     """
-    Custom trainer for IS Reshape experiments.
+    Custom trainer for VESPO experiments.
 
     Key difference from RayPPOTrainer:
     - Logs metrics at each policy update (optimizer step), not just each batch

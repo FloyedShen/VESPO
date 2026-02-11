@@ -1,4 +1,4 @@
-# Copyright 2024 IS Reshape Authors
+# Copyright 2024 VESPO Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-IS Reshape Data Parallel Actor
+VESPO Data Parallel Actor
 
 This extends the base DataParallelPPOActor to track per-policy-update metrics,
-which is crucial for understanding how IS Reshape's gamma adapts across
+which is crucial for understanding how VESPO's gamma adapts across
 multiple PPO updates on the same data.
 
 Metric granularity:
@@ -28,7 +28,7 @@ import torch
 from verl import DataProto
 from verl.trainer.ppo.core_algos import agg_loss, get_policy_loss_fn, kl_penalty
 
-# Import to register "is_reshape" policy loss
+# Import to register VESPO policy loss
 import recipe.vespo.code.core_algos  # noqa: F401
 from verl.utils.metric import reduce_metrics
 from verl.utils.py_functional import append_to_dict
@@ -41,11 +41,11 @@ __all__ = ["ISReshapeDataParallelPPOActor"]
 
 class ISReshapeDataParallelPPOActor(DataParallelPPOActor):
     """
-    Extended DataParallelPPOActor that tracks per-policy-update metrics for IS Reshape.
+    Extended DataParallelPPOActor that tracks per-policy-update metrics for VESPO.
 
     Key additions:
     - Each policy update (mini_batch optimizer step) is a separate metric step
-    - Records metrics per policy update for IS Reshape (gamma, sigma_sq, ess_ratio)
+    - Records metrics per policy update for VESPO (gamma, sigma_sq, ess_ratio)
     - Allows analysis of how gamma evolves as π_θ drifts from π_old
     - Supports NoMu mode: replaces μ with group mean of current π
     """

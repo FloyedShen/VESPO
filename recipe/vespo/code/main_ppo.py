@@ -1,4 +1,4 @@
-# Copyright 2024 IS Reshape Authors
+# Copyright 2024 VESPO Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-IS Reshape PPO Trainer
+VESPO PPO Trainer
 
-Main entry point for IS Reshape experiments with Megatron/FSDP backend.
+Main entry point for VESPO experiments with Megatron/FSDP backend.
 
 Features:
 1. Per-update metrics tracking: Each optimizer.step() is logged as a separate step
@@ -44,7 +44,7 @@ from verl.trainer.ppo.utils import Role, need_critic, need_reference_policy
 from verl.utils.config import validate_config
 from verl.workers.config.actor import PolicyLossConfig
 
-# Import IS Reshape custom trainer
+# Import VESPO custom trainer
 from recipe.vespo.code.trainer import ISReshapeTrainer
 
 # Import reward_loop_prime to register the "prime_loop" reward manager
@@ -96,7 +96,7 @@ def main(config):
 
 
 def run_is_reshape_ppo(config) -> None:
-    """Run PPO training with IS Reshape - uses same structure as official main_ppo."""
+    """Run PPO training with VESPO - uses same structure as official main_ppo."""
     if not ray.is_initialized():
         default_runtime_env = get_ppo_ray_runtime_env()
         ray_init_kwargs = config.ray_kwargs.get("ray_init", {})
@@ -130,7 +130,7 @@ def run_is_reshape_ppo(config) -> None:
 
 
 class TaskRunner:
-    """Task runner for IS Reshape training - simplified structure matching official."""
+    """Task runner for VESPO training - simplified structure matching official."""
 
     def __init__(self):
         self.role_worker_mapping = {}
@@ -140,7 +140,7 @@ class TaskRunner:
         """Add actor rollout worker based on the actor strategy."""
         from verl.single_controller.ray import RayWorkerGroup
 
-        # Use IS Reshape custom workers for both FSDP and Megatron strategies
+        # Use VESPO custom workers for both FSDP and Megatron strategies
         if config.actor_rollout_ref.actor.strategy in {"fsdp", "fsdp2"}:
             from recipe.vespo.code.fsdp_workers import ISReshapeRolloutRefWorker
             actor_rollout_cls = ISReshapeRolloutRefWorker

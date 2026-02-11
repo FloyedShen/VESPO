@@ -38,7 +38,7 @@ use_kl_loss=False
 kl_loss_coef=0.001
 kl_loss_type=low_var_kl
 
-# IS Reshape Gamma-IS parameters (for vespo loss mode)
+# VESPO Gamma-IS parameters (for vespo loss mode)
 # Uncomment to use vespo instead of default PPO clip loss
 K_POS=${K_POS:-2.0}
 LAMBDA_POS=${LAMBDA_POS:-3.0}

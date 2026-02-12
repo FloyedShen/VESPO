@@ -2,7 +2,7 @@
 
 # VESPO: Variational Sequence-Level Soft Policy Optimization for Stable Off-Policy LLM Training
 
-[![Paper](https://img.shields.io/badge/paper-A42C25?style=for-the-badge&logo=arxiv&logoColor=white)](https://arxiv.org/abs/xxxx.xxxxx)
+[![Paper](https://img.shields.io/badge/paper-A42C25?style=for-the-badge&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2602.10693)
 [![Github](https://img.shields.io/badge/VESPO-000000?style=for-the-badge&logo=github&logoColor=000&logoColor=white)](https://github.com/FloyedShen/VESPO)
 
 </div>
@@ -45,7 +45,7 @@ VESPO's robustness extends to fully asynchronous training, where rollout and tra
 *Training dynamics under fully asynchronous training on Qwen3-30B-A3B-Base. VESPO maintains stable training and achieves the highest reward and benchmark accuracy.*
 
 > [!NOTE]
-> For complete results across different staleness ratios (N=4 to 64), model scales, and ablation studies, please refer to our [paper](https://arxiv.org/abs/xxxx.xxxxx).
+> For complete results across different staleness ratios (N=4 to 64), model scales, and ablation studies, please refer to our [paper](https://arxiv.org/abs/2602.10693).
 
 ## 🚀 Getting Started
 
@@ -80,11 +80,14 @@ bash recipe/vespo/run/fully_async/vespo_S_1.0_N_4.sh
 If you find this work useful, please consider citing:
 
 ```bibtex
-@misc{vespo2026,
+@misc{shen2026vespovariationalsequencelevelsoft,
   title={VESPO: Variational Sequence-Level Soft Policy Optimization for Stable Off-Policy LLM Training},
   author={Guobin Shen and Chenxiao Zhao and Xiang Cheng and Lei Huang and Xing Yu},
   year={2026},
-  url={https://github.com/FloyedShen/VESPO}
+  eprint={2602.10693},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG},
+  url={https://arxiv.org/abs/2602.10693},
 }
 ```
 
